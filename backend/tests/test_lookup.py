@@ -116,3 +116,90 @@ def test_identify_returns_none_on_network_error(monkeypatch):
 
     monkeypatch.setattr("barbershop.lookup.identify.requests.get", fake_get)
     assert identify("/tmp/song.mp3", duration=180.0) is None
+
+
+from barbershop.lookup.lyrics import LookedUpLyrics, fetch_lyrics, parse_lrc  # noqa: E402
+
+IDENT = SongIdentity(
+    title="Shine On, Harvest Moon",
+    artist="Ada Jones; Billy Murray",
+    year=1909,
+    recording_mbid="mbid-123",
+    match_score=0.93,
+)
+
+LRC = "[ar:Ada Jones]\n[00:12.34] Shine on\n\n[00:15.00][01:15.00] harvest moon\n[10:05.5]up in the sky\n"
+
+
+def test_parse_lrc():
+    assert parse_lrc(LRC) == [
+        (12.34, "Shine on"),
+        (15.0, "harvest moon"),
+        (75.0, "harvest moon"),  # repeated stamp = repeated line
+        (605.5, "up in the sky"),
+    ]
+    assert parse_lrc("") == []
+    assert parse_lrc("[ar:meta only]\nno timestamps here") == []
+
+
+def test_fetch_lyrics_exact_hit(monkeypatch):
+    record = {"instrumental": False, "syncedLyrics": LRC, "plainLyrics": "Shine on..."}
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        assert url.endswith("/get")
+        assert params["track_name"] == IDENT.title
+        assert params["artist_name"] == IDENT.artist
+        assert params["duration"] == 180
+        assert "barbershopify" in headers["User-Agent"]
+        return _Resp(record)
+
+    monkeypatch.setattr("barbershop.lookup.lyrics.requests.get", fake_get)
+    got = fetch_lyrics(IDENT, duration=180.2)
+    assert got is not None
+    assert got.synced[0] == (12.34, "Shine on")
+    assert got.plain == "Shine on..."
+
+
+def test_fetch_lyrics_search_fallback_picks_closest_duration(monkeypatch):
+    hits = [
+        {"duration": 120, "plainLyrics": "wrong cut"},
+        {"duration": 178, "plainLyrics": "right cut", "syncedLyrics": None},
+        {"duration": 300, "plainLyrics": "other cut"},
+    ]
+    calls = []
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        calls.append(url)
+        if url.endswith("/get"):
+            return _Resp({}, status=404)
+        assert url.endswith("/search")
+        return _Resp(hits)
+
+    monkeypatch.setattr("barbershop.lookup.lyrics.requests.get", fake_get)
+    got = fetch_lyrics(IDENT, duration=180.0)
+    assert got == LookedUpLyrics(synced=None, plain="right cut")
+    assert len(calls) == 2
+
+
+def test_fetch_lyrics_rejects_far_durations_and_instrumentals(monkeypatch):
+    def far(url, params=None, headers=None, timeout=None):
+        if url.endswith("/get"):
+            return _Resp({}, status=404)
+        return _Resp([{"duration": 400, "plainLyrics": "different song"}])
+
+    monkeypatch.setattr("barbershop.lookup.lyrics.requests.get", far)
+    assert fetch_lyrics(IDENT, duration=180.0) is None
+
+    def instrumental(url, params=None, headers=None, timeout=None):
+        return _Resp({"instrumental": True, "plainLyrics": "", "syncedLyrics": ""})
+
+    monkeypatch.setattr("barbershop.lookup.lyrics.requests.get", instrumental)
+    assert fetch_lyrics(IDENT, duration=180.0) is None
+
+
+def test_fetch_lyrics_never_raises(monkeypatch):
+    def boom(url, params=None, headers=None, timeout=None):
+        raise requests.ConnectionError("offline")
+
+    monkeypatch.setattr("barbershop.lookup.lyrics.requests.get", boom)
+    assert fetch_lyrics(IDENT, duration=180.0) is None
