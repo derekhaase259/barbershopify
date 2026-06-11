@@ -115,6 +115,6 @@ arrangement engine (two-stage Viterbi over chords then voicings, with a barbersh
 chord-vocabulary validator that names any rule violation by measure and beat), MusicXML
 and MIDI serialization. React/Vite frontend: OpenSheetMusicDisplay engraving, Tone.js
 playback with root-anchored just intonation. `SPEC.md` is the full project spec,
-`DESIGN.md` explains the non-obvious choices, and `backend/tests/` (168 tests) is the
+`DESIGN.md` explains the non-obvious choices, and `backend/tests/` (169 tests) is the
 quality bar — run them with `make test`. Test recordings and their public-domain
 provenance live in [`test_songs/SOURCES.md`](test_songs/SOURCES.md).
