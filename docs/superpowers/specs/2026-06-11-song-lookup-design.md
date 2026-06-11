@@ -123,6 +123,7 @@ The store keeps `identity` from the response. When present, the score header sho
 
 ## One human step
 
-Register a free AcoustID application key at acoustid.org (needs a MusicBrainz or Google
-login; ~2 minutes), then commit it as the constant in `lookup/identify.py`. Everything
-else works from a fresh clone with no keys.
+~~Register a free AcoustID application key at acoustid.org~~ **Done 2026-06-11**: Derek
+registered application "Barbershopify" (v0.1); the key is `crzNhTAC7w` and will be
+committed as the constant in `lookup/identify.py`. Everything else works from a fresh
+clone with no keys.
