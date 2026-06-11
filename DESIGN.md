@@ -223,9 +223,15 @@ chord minimum still rejects two-chord ditties).
 
 **Why Chordie.** The 2026-06-11 probe found Ultimate Guitar, e-chords, UkuTabs, and
 Cifra Club all behind Cloudflare for plain requests; Chordie serves 200s and embeds each
-song's ChordPro source verbatim. Its search relevance is poor (covers outrank originals),
-so candidates are verified against the AcoustID identity ({st:} artist / {t:} title token
-overlap) before parsing. maj7 maps to maj6 — barbershop never voices a major seventh.
+song's ChordPro source verbatim. Its search relevance is poor (covers outrank originals,
+and adding the artist to the query returns that artist's *other* songs — hence two merged
+searches), so candidates are verified against the AcoustID identity before parsing: the
+title must match by a majority of its tokens (any-overlap let "Jude the Obscene"
+impersonate "Hey Jude"), while the artist only *ranks* — same-artist sheets first, then
+same-title covers, because a cover keeps the harmony and the alignment gate against the
+actual audio is the real arbiter (strict artist matching cost us every Hallelujah:
+Chordie has it only as covers). maj7 maps to maj6 — barbershop never voices a major
+seventh.
 
 **Order matters.** Identification now runs right after beat tracking: tab correction must
 precede key detection, and lyrics need the identity later anyway. Tempo, meter, and
