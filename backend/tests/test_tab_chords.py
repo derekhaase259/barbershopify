@@ -141,3 +141,65 @@ def test_fetch_chords_never_raises(monkeypatch):
 
     monkeypatch.setattr("barbershop.lookup.tabs.requests.get", boom)
     assert fetch_chords(BEATLES) is None
+
+
+from barbershop.lookup.align import TabAlignment, apply_tab
+from barbershop.score import ChordSpan
+
+
+def _spans(seq):
+    return [
+        ChordSpan(onset=i * 1920, duration=1920, root_pc=r, quality=q)
+        for i, (r, q) in enumerate(seq)
+    ]
+
+
+def _tab(chords):
+    return TabChords(chords=chords, url="http://x", artist="A", title="T")
+
+
+def test_apply_tab_fixes_false_minor():
+    # audio heard Am where the song plays C; everything else agrees. The
+    # tab restates C across lines (tabs spell out repeats), and that
+    # restated C is what pairs with — and corrects — the false minor.
+    audio = _spans([(0, "maj"), (9, "min"), (7, "dom7"), (5, "maj"), (0, "maj")])
+    tab = _tab(["C", "C", "G7", "F", "C"])
+    fixed = apply_tab(audio, tab)
+    assert fixed is not None
+    assert fixed.transposition == 0
+    assert [(s.root_pc, s.quality) for s in fixed.spans] == [
+        (0, "maj"), (0, "maj"), (7, "dom7"), (5, "maj"), (0, "maj")
+    ]
+    assert fixed.agreement == 0.8  # 4 of 5 roots agreed before correction
+
+
+def test_apply_tab_recovers_transposition():
+    # tab written 3 semitones low (capo 3): A F#m E7 A vs audio in C
+    audio = _spans([(0, "maj"), (9, "min7"), (7, "dom7"), (0, "maj"), (5, "maj")])
+    tab = _tab(["A", "F#m7", "E7", "A", "D"])
+    fixed = apply_tab(audio, tab)
+    assert fixed is not None
+    assert fixed.transposition == 3
+    assert [(s.root_pc, s.quality) for s in fixed.spans] == [
+        (0, "maj"), (9, "min7"), (7, "dom7"), (0, "maj"), (5, "maj")
+    ]
+    assert fixed.agreement == 1.0
+
+
+def test_apply_tab_absorbs_extra_tab_chords_as_gaps():
+    audio = _spans([(0, "maj"), (7, "dom7"), (0, "maj")])
+    tab = _tab(["C", "Em", "Am", "F", "G7", "C"])  # fuller progression than audio saw
+    fixed = apply_tab(audio, tab)
+    assert fixed is not None
+    assert [s.root_pc for s in fixed.spans] == [0, 7, 0]
+
+
+def test_apply_tab_rejects_disagreeing_tab():
+    audio = _spans([(0, "maj"), (5, "maj"), (7, "dom7"), (0, "maj")] * 3)
+    tab = _tab(["Eb", "Bbm", "F#", "B", "Dbm", "Ab"])  # unrelated song
+    assert apply_tab(audio, tab) is None
+
+
+def test_apply_tab_needs_enough_chords():
+    audio = _spans([(0, "maj"), (7, "dom7")])
+    assert apply_tab(audio, _tab(["C", "C", "C", "G7"])) is None  # compresses to 2 distinct
