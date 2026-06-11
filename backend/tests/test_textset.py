@@ -73,3 +73,43 @@ def test_lines_map_to_phrases():
     assert len(reports) == 2
     first_phrase_lyrics = [n.lyric.text for n in notes[:4]]
     assert first_phrase_lyrics == ["sing", "a", "song", "now"]
+
+
+def _three_phrase_melody():
+    # phrases at ticks [0,960), [1920,2880), [3840,4800) — gaps >= 120 split
+    return (
+        quarters([60, 62])
+        + quarters([60, 62], start=4 * Q)
+        + quarters([60, 62], start=8 * Q)
+    )
+
+
+def test_timed_lines_land_in_their_phrases_and_skip_instrumental():
+    from barbershop.textset.align import set_timed_lines
+
+    out, reports = set_timed_lines(
+        _three_phrase_melody(), [(0, "shine on"), (3840, "my love")], T44
+    )
+    texts = {n.onset: n.lyric.text for n in out if n.lyric}
+    assert texts[0] == "shine" and texts[480] == "on"
+    assert 1920 not in texts and 2400 not in texts  # instrumental interlude: no words
+    assert texts[3840] == "my" and texts[4320] == "love"
+    assert len(reports) == 3
+    assert reports[1].status == "yellow" and "no text" in reports[1].detail
+
+
+def test_timed_lines_grace_window_for_early_stamps():
+    from barbershop.textset.align import set_timed_lines
+
+    # LRC stamps (and singers) run a hair early: 1900 belongs to the phrase at 1920
+    out, _ = set_timed_lines(_three_phrase_melody(), [(1900, "my love")], T44)
+    texts = {n.onset: n.lyric.text for n in out if n.lyric}
+    assert texts == {1920: "my", 2400: "love"}
+
+
+def test_timed_lines_clamp_before_first_phrase():
+    from barbershop.textset.align import set_timed_lines
+
+    out, _ = set_timed_lines(_three_phrase_melody(), [(-500, "shine on")], T44)
+    texts = {n.onset: n.lyric.text for n in out if n.lyric}
+    assert texts == {0: "shine", 480: "on"}
