@@ -192,8 +192,8 @@ def test_tab_correction_applies(test_wav, monkeypatch):
 
     monkeypatch.setattr("barbershop.lookup.identify.identify", lambda *a, **k: IDENT)
     monkeypatch.setattr(
-        "barbershop.lookup.tabs.fetch_chords",
-        lambda *a, **k: TabChords(chords=["C", "F", "G7"], url="http://tab", artist="x", title="y"),
+        "barbershop.lookup.tabs.fetch_candidates",
+        lambda *a, **k: [TabChords(chords=["C", "F", "G7"], url="http://tab", artist="x", title="y")],
     )
 
     def fake_apply(spans, tab):
@@ -214,8 +214,8 @@ def test_tab_rejection_keeps_audio_chords(test_wav, monkeypatch):
 
     monkeypatch.setattr("barbershop.lookup.identify.identify", lambda *a, **k: IDENT)
     monkeypatch.setattr(
-        "barbershop.lookup.tabs.fetch_chords",
-        lambda *a, **k: TabChords(chords=["Eb", "Bbm", "F#", "B"], url="http://tab", artist="x", title="y"),
+        "barbershop.lookup.tabs.fetch_candidates",
+        lambda *a, **k: [TabChords(chords=["Eb", "Bbm", "F#", "B"], url="http://tab", artist="x", title="y")],
     )
     monkeypatch.setattr("barbershop.lookup.align.apply_tab", lambda spans, tab: None)
     monkeypatch.setattr("barbershop.analysis.asr.transcribe", lambda path: None)
@@ -229,7 +229,7 @@ def test_tab_crash_changes_nothing(test_wav, monkeypatch):
         raise RuntimeError("tab fetch exploded")
 
     monkeypatch.setattr("barbershop.lookup.identify.identify", lambda *a, **k: IDENT)
-    monkeypatch.setattr("barbershop.lookup.tabs.fetch_chords", boom)
+    monkeypatch.setattr("barbershop.lookup.tabs.fetch_candidates", boom)
     monkeypatch.setattr("barbershop.analysis.asr.transcribe", lambda path: None)
     result = analyze(str(test_wav), use_cache=False)
     assert result.chord_source == "audio"
@@ -242,8 +242,8 @@ def test_cache_roundtrips_chord_fields(test_wav, monkeypatch, tmp_path):
     monkeypatch.setattr("barbershop.analysis.pipeline.CACHE_DIR", tmp_path)
     monkeypatch.setattr("barbershop.lookup.identify.identify", lambda *a, **k: IDENT)
     monkeypatch.setattr(
-        "barbershop.lookup.tabs.fetch_chords",
-        lambda *a, **k: TabChords(chords=["C", "F", "G7", "C"], url="http://tab", artist="x", title="y"),
+        "barbershop.lookup.tabs.fetch_candidates",
+        lambda *a, **k: [TabChords(chords=["C", "F", "G7", "C"], url="http://tab", artist="x", title="y")],
     )
     monkeypatch.setattr(
         "barbershop.lookup.align.apply_tab",
@@ -252,10 +252,34 @@ def test_cache_roundtrips_chord_fields(test_wav, monkeypatch, tmp_path):
     monkeypatch.setattr("barbershop.analysis.asr.transcribe", lambda path: None)
     analyze(str(test_wav), use_cache=True)
     monkeypatch.setattr(
-        "barbershop.lookup.tabs.fetch_chords",
+        "barbershop.lookup.tabs.fetch_candidates",
         lambda *a, **k: pytest.fail("cache hit must not refetch the tab"),
     )
     second = analyze(str(test_wav), use_cache=True)
     assert second.chord_source == "tab"
     assert second.chord_agreement == 0.9
     assert second.tab_url == "http://tab"
+
+
+def test_second_candidate_passes_gate(test_wav, monkeypatch):
+    """A same-artist sheet that fails the gate falls through to a cover."""
+    from barbershop.lookup.align import TabAlignment
+    from barbershop.lookup.tabs import TabChords
+
+    monkeypatch.setattr("barbershop.lookup.identify.identify", lambda *a, **k: IDENT)
+    bad = TabChords(chords=["Eb", "Bbm", "F#", "B"], url="http://bad", artist="orig", title="t")
+    cover = TabChords(chords=["C", "F", "G7", "C"], url="http://cover", artist="cover band", title="t")
+    monkeypatch.setattr(
+        "barbershop.lookup.tabs.fetch_candidates", lambda *a, **k: [bad, cover]
+    )
+
+    def gate(spans, tab):
+        if tab.url == "http://bad":
+            return None
+        return TabAlignment(spans=list(spans), agreement=0.7, transposition=0, url=tab.url)
+
+    monkeypatch.setattr("barbershop.lookup.align.apply_tab", gate)
+    monkeypatch.setattr("barbershop.analysis.asr.transcribe", lambda path: None)
+    result = analyze(str(test_wav), use_cache=False)
+    assert result.chord_source == "tab"
+    assert result.tab_url == "http://cover"

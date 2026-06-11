@@ -23,7 +23,7 @@ USER_AGENT = (
     "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 )  # chordie serves plain requests; a browser UA keeps us boring
 TIMEOUT = (3.05, 10)
-MAX_CANDIDATES = 5
+MAX_CANDIDATES = 10  # two searches' worth of links; fetched once per song, cached
 MIN_TOKENS = 4
 
 log = logging.getLogger(__name__)
@@ -45,31 +45,40 @@ class TabChords:
     title: str
 
 
-def fetch_chords(identity: SongIdentity) -> TabChords | None:
-    """Best Chordie chord sheet for the identified song, or None. Never raises."""
+def fetch_candidates(identity: SongIdentity) -> list[TabChords]:
+    """Chordie chord sheets plausibly of this song: same-artist sheets first,
+    then same-title covers (a cover keeps the harmony; the caller's alignment
+    gate against the actual audio is the real arbiter). Never raises."""
     try:
-        q = quote_plus(f"{identity.title} {identity.artist}")
-        page = requests.get(
-            f"{CHORDIE_URL}/results.php?q={q}",
-            headers={"User-Agent": USER_AGENT},
-            timeout=TIMEOUT,
-        )
-        page.raise_for_status()
+        # two searches with different blind spots, merged: title-only finds
+        # covers the artist tokens would crowd out, title+artist finds the
+        # original when the title query is flooded
         links: list[str] = []
-        for link in _SONG_LINK.findall(page.text):
-            if link not in links:
-                links.append(link)
+        for q in (identity.title, f"{identity.title} {identity.artist}"):
+            page = requests.get(
+                f"{CHORDIE_URL}/results.php?q={quote_plus(q)}",
+                headers={"User-Agent": USER_AGENT},
+                timeout=TIMEOUT,
+            )
+            page.raise_for_status()
+            for link in _SONG_LINK.findall(page.text):
+                if link not in links:
+                    links.append(link)
+        primary: list[TabChords] = []
+        covers: list[TabChords] = []
         for link in links[:MAX_CANDIDATES]:
-            tab = _candidate(link, identity)
-            if tab is not None:
-                return tab
-        return None
+            found = _candidate(link, identity)
+            if found is None:
+                continue
+            tab, artist_matched = found
+            (primary if artist_matched else covers).append(tab)
+        return primary + covers
     except Exception:
         log.info("song lookup: tab fetch failed, skipping", exc_info=True)
-        return None
+        return []
 
 
-def _candidate(link: str, identity: SongIdentity) -> TabChords | None:
+def _candidate(link: str, identity: SongIdentity) -> tuple[TabChords, bool] | None:
     page = requests.get(
         CHORDIE_URL + html.unescape(link),
         headers={"User-Agent": USER_AGENT},
@@ -83,16 +92,26 @@ def _candidate(link: str, identity: SongIdentity) -> TabChords | None:
     pro = html.unescape(m.group(1))
     title = t.group(1).strip() if (t := _TITLE.search(pro)) else ""
     artist = a.group(1).strip() if (a := _ARTIST.search(pro)) else ""
-    if not (_overlaps(artist, identity.artist) and _overlaps(title, identity.title)):
-        return None
+    if not _title_matches(title, identity.title):
+        return None  # same-title is non-negotiable; artist only affects rank
     chords = parse_chordpro(pro)
     if len(chords) < MIN_TOKENS:
         return None
-    return TabChords(chords=chords, url=CHORDIE_URL + link, artist=artist, title=title)
+    tab = TabChords(chords=chords, url=CHORDIE_URL + link, artist=artist, title=title)
+    return tab, _overlaps(artist, identity.artist)
 
 
 def _overlaps(found: str, wanted: str) -> bool:
     return bool(_tokens(found) & _tokens(wanted))
+
+
+def _title_matches(found: str, wanted: str) -> bool:
+    """Majority of the wanted title's tokens must appear: any-overlap lets
+    'Jude the Obscene' impersonate 'Hey Jude'."""
+    want = _tokens(wanted)
+    if not want:
+        return False
+    return len(_tokens(found) & want) / len(want) > 0.5
 
 
 def _tokens(s: str) -> set[str]:

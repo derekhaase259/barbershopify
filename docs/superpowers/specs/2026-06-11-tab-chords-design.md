@@ -25,17 +25,23 @@ detection votes from chord labels, so better chords directly produce better arra
 
 ## Components (all in `backend/barbershop/lookup/`)
 
-- **`tabs.py`** — `fetch_chords(identity) -> TabChords | None`. Plain `requests` with a
+- **`tabs.py`** — `fetch_candidates(identity) -> list[TabChords]`. Plain `requests` with a
   browser User-Agent against Chordie: (1) search
-  (`https://www.chordie.com/results.php?q={title} {artist}`), collect the song links
-  (`/chord.pere/...`), deduplicated, first 5 candidates; (2) fetch candidates in order and
-  take the first whose embedded ChordPro source (`<textarea id="chordproContent">`)
-  matches the identity — `{st:}` artist and `{t:}` title verified by normalized token
-  overlap, because Chordie's search relevance is loose (probe found a Wilson Pickett
-  cover as the top "Hey Jude" hit). Chord tokens come from the ChordPro body in order:
-  strip `{sot}…{eot}` tablature blocks and `#` comment lines, then collect inline
-  `[C]`/`[F#m7]` brackets. Require ≥ 4 tokens. `TabChords(chords: list[str], url: str,
-  artist: str, title: str)`. Never raises.
+  (`https://www.chordie.com/results.php?q={title}` — title only; appending the artist
+  makes Chordie return that artist's *other* songs, found live 2026-06-11), collect the
+  song links (`/chord.pere/...`), deduplicated, first 5 candidates; (2) fetch candidates
+  in order and keep those whose embedded ChordPro source (`<textarea id="chordproContent">`)
+  matches the identity. **Amended 2026-06-11 (live verification finding):** title match
+  is mandatory (majority of the wanted title's tokens — any-overlap let "Jude the
+  Obscene" impersonate "Hey Jude"), but artist match only *ranks*: same-artist sheets
+  are tried first, then same-title covers, because covers keep the harmony and the ≥50%
+  alignment gate against the actual audio is the real arbiter (strict artist matching
+  cost us every Hallelujah, which exists on Chordie only as covers). `fetch_candidates`
+  returns the ordered list; the pipeline tries each through `apply_tab` until one passes
+  the gate. Chord tokens come from the ChordPro body in order: strip `{sot}…{eot}`
+  tablature blocks and `#` comment lines, then collect inline `[C]`/`[F#m7]` brackets.
+  Require ≥ 4 tokens. `TabChords(chords: list[str], url: str, artist: str, title: str)`.
+  Never raises.
 - **`chordnames.py`** — `parse_chord(name) -> tuple[int, str] | None` mapping guitar
   names into the arranger vocabulary: `m→min`, `7→dom7`, `m7→min7`, `maj7→maj6` (the
   barbershop substitute; maj7 is never voiced), `m7b5→halfdim7`, `dim/dim7→dim7`,

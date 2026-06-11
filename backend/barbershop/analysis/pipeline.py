@@ -138,16 +138,16 @@ def analyze(
     if identity is not None and chord_spans:
         try:
             from barbershop.lookup.align import apply_tab
-            from barbershop.lookup.tabs import fetch_chords
+            from barbershop.lookup.tabs import fetch_candidates
 
-            tab = fetch_chords(identity)
-            if tab is not None:
+            for tab in fetch_candidates(identity):
                 fixed = apply_tab(chord_spans, tab)
                 if fixed is not None:
                     chord_spans = fixed.spans
                     chord_source = "tab"
                     chord_agreement = fixed.agreement
                     tab_url = fixed.url
+                    break
         except Exception:
             log.info("song lookup: tab correction crashed, continuing", exc_info=True)
 
