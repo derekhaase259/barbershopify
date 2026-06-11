@@ -8,3 +8,4 @@ import pytest
 def _no_song_lookup(monkeypatch):
     monkeypatch.setattr("barbershop.lookup.identify.identify", lambda *a, **k: None)
     monkeypatch.setattr("barbershop.lookup.lyrics.fetch_lyrics", lambda *a, **k: None)
+    monkeypatch.setattr("barbershop.lookup.tabs.fetch_chords", lambda *a, **k: None)

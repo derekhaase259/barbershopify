@@ -65,6 +65,9 @@ class AnalysisResult:
     lyrics_source: str = "none"  # lrclib / asr / neutral / none
     lyrics_confidence: float = 0.0
     identity: SongIdentity | None = None
+    chord_source: str = "audio"  # audio / tab
+    chord_agreement: float | None = None
+    tab_url: str | None = None
 
 
 def _cache_key(path: str) -> str:
@@ -83,7 +86,7 @@ def analyze(
     lyrics: bool = True,
     lookup: bool = True,
 ) -> AnalysisResult:
-    cache_file = CACHE_DIR / f"{_cache_key(path)}-v4.json"
+    cache_file = CACHE_DIR / f"{_cache_key(path)}-v5.json"
     if use_cache and cache_file.exists():
         data = json.loads(cache_file.read_text())
         inp = ArrangeInput.model_validate(data["input"])
@@ -97,10 +100,24 @@ def analyze(
             lyrics_source=data.get("lyrics_source", "none"),
             lyrics_confidence=data.get("lyrics_confidence", 0.0),
             identity=identity,
+            chord_source=data.get("chord_source", "audio"),
+            chord_agreement=data.get("chord_agreement"),
+            tab_url=data.get("tab_url"),
         )
 
     y, sr = load_audio(path)
     grid = beats_mod.track(y, sr)
+
+    # identify first: tab correction needs the identity before key
+    # detection, and lyrics lookup wants it later anyway
+    identity = None
+    if lookup:
+        try:
+            from barbershop.lookup.identify import identify
+
+            identity = identify(path, duration=len(y) / sr)
+        except Exception:
+            log.info("song lookup: identification crashed, continuing", exc_info=True)
 
     # chord labels first: their harmonic rhythm exposes a double-time
     # grid, and their changes vote for meter (3/4 vs 4/4) and downbeat
@@ -117,6 +134,23 @@ def analyze(
     melody = melody_mod.quantize(segments, grid)
     chord_spans = chords_mod.spans_from_labels(labels, grid)
 
+    chord_source, chord_agreement, tab_url = "audio", None, None
+    if identity is not None and chord_spans:
+        try:
+            from barbershop.lookup.align import apply_tab
+            from barbershop.lookup.tabs import fetch_chords
+
+            tab = fetch_chords(identity)
+            if tab is not None:
+                fixed = apply_tab(chord_spans, tab)
+                if fixed is not None:
+                    chord_spans = fixed.spans
+                    chord_source = "tab"
+                    chord_agreement = fixed.agreement
+                    tab_url = fixed.url
+        except Exception:
+            log.info("song lookup: tab correction crashed, continuing", exc_info=True)
+
     detected_key = key_mod.key_from_chords(chord_spans)
     if detected_key is None:
         import librosa
@@ -128,15 +162,6 @@ def analyze(
         raise ValueError("no melody could be extracted from this audio")
     if not chord_spans:
         raise ValueError("no chords could be estimated from this audio")
-
-    identity = None
-    if lookup:
-        try:
-            from barbershop.lookup.identify import identify
-
-            identity = identify(path, duration=len(y) / sr)
-        except Exception:
-            log.info("song lookup: identification crashed, continuing", exc_info=True)
 
     lyrics_source, lyrics_confidence = "none", 0.0
     if lyrics:
@@ -186,6 +211,9 @@ def analyze(
         lyrics_source=lyrics_source,
         lyrics_confidence=round(lyrics_confidence, 3),
         identity=identity,
+        chord_source=chord_source,
+        chord_agreement=chord_agreement,
+        tab_url=tab_url,
     )
     if use_cache:
         CACHE_DIR.mkdir(exist_ok=True)
@@ -198,6 +226,9 @@ def analyze(
                     "lyrics_source": result.lyrics_source,
                     "lyrics_confidence": result.lyrics_confidence,
                     "identity": asdict(identity) if identity else None,
+                    "chord_source": chord_source,
+                    "chord_agreement": chord_agreement,
+                    "tab_url": tab_url,
                 }
             )
         )

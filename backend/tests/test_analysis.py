@@ -184,3 +184,78 @@ def test_cache_roundtrips_identity_and_title_rule(test_wav, monkeypatch, tmp_pat
     assert second.identity == IDENT
     assert second.input.title == "Synth Song"
     assert second.lyrics_source == "lrclib"
+
+
+def test_tab_correction_applies(test_wav, monkeypatch):
+    from barbershop.lookup.align import TabAlignment
+    from barbershop.lookup.tabs import TabChords
+
+    monkeypatch.setattr("barbershop.lookup.identify.identify", lambda *a, **k: IDENT)
+    monkeypatch.setattr(
+        "barbershop.lookup.tabs.fetch_chords",
+        lambda *a, **k: TabChords(chords=["C", "F", "G7"], url="http://tab", artist="x", title="y"),
+    )
+
+    def fake_apply(spans, tab):
+        fixed = [s.model_copy(update={"quality": "min7"}) for s in spans]
+        return TabAlignment(spans=fixed, agreement=0.83, transposition=0, url=tab.url)
+
+    monkeypatch.setattr("barbershop.lookup.align.apply_tab", fake_apply)
+    monkeypatch.setattr("barbershop.analysis.asr.transcribe", lambda path: None)
+    result = analyze(str(test_wav), use_cache=False)
+    assert result.chord_source == "tab"
+    assert result.chord_agreement == 0.83
+    assert result.tab_url == "http://tab"
+    assert all(c.quality == "min7" for c in result.input.chords)
+
+
+def test_tab_rejection_keeps_audio_chords(test_wav, monkeypatch):
+    from barbershop.lookup.tabs import TabChords
+
+    monkeypatch.setattr("barbershop.lookup.identify.identify", lambda *a, **k: IDENT)
+    monkeypatch.setattr(
+        "barbershop.lookup.tabs.fetch_chords",
+        lambda *a, **k: TabChords(chords=["Eb", "Bbm", "F#", "B"], url="http://tab", artist="x", title="y"),
+    )
+    monkeypatch.setattr("barbershop.lookup.align.apply_tab", lambda spans, tab: None)
+    monkeypatch.setattr("barbershop.analysis.asr.transcribe", lambda path: None)
+    result = analyze(str(test_wav), use_cache=False)
+    assert result.chord_source == "audio"
+    assert result.chord_agreement is None
+
+
+def test_tab_crash_changes_nothing(test_wav, monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("tab fetch exploded")
+
+    monkeypatch.setattr("barbershop.lookup.identify.identify", lambda *a, **k: IDENT)
+    monkeypatch.setattr("barbershop.lookup.tabs.fetch_chords", boom)
+    monkeypatch.setattr("barbershop.analysis.asr.transcribe", lambda path: None)
+    result = analyze(str(test_wav), use_cache=False)
+    assert result.chord_source == "audio"
+
+
+def test_cache_roundtrips_chord_fields(test_wav, monkeypatch, tmp_path):
+    from barbershop.lookup.align import TabAlignment
+    from barbershop.lookup.tabs import TabChords
+
+    monkeypatch.setattr("barbershop.analysis.pipeline.CACHE_DIR", tmp_path)
+    monkeypatch.setattr("barbershop.lookup.identify.identify", lambda *a, **k: IDENT)
+    monkeypatch.setattr(
+        "barbershop.lookup.tabs.fetch_chords",
+        lambda *a, **k: TabChords(chords=["C", "F", "G7", "C"], url="http://tab", artist="x", title="y"),
+    )
+    monkeypatch.setattr(
+        "barbershop.lookup.align.apply_tab",
+        lambda spans, tab: TabAlignment(spans=list(spans), agreement=0.9, transposition=2, url=tab.url),
+    )
+    monkeypatch.setattr("barbershop.analysis.asr.transcribe", lambda path: None)
+    analyze(str(test_wav), use_cache=True)
+    monkeypatch.setattr(
+        "barbershop.lookup.tabs.fetch_chords",
+        lambda *a, **k: pytest.fail("cache hit must not refetch the tab"),
+    )
+    second = analyze(str(test_wav), use_cache=True)
+    assert second.chord_source == "tab"
+    assert second.chord_agreement == 0.9
+    assert second.tab_url == "http://tab"
