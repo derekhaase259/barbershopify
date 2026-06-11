@@ -19,6 +19,7 @@ def test_list_demos():
 
 def test_arrange_demo_returns_score_and_musicxml():
     r = client.post("/api/demos/yankee-doodle/arrange", json={"spice": 3})
+    assert isinstance(r.json()["metrics"].get("input_adherence"), float)
     assert r.status_code == 200
     body = r.json()
     assert set(body["score"]["voices"]) == {"tenor", "lead", "bari", "bass"}
@@ -130,6 +131,7 @@ def test_upload_happy_path(monkeypatch, tmp_path):
     assert body["score"]["voices"]["lead"]
     assert body["lyrics"]["source"] == "neutral"  # graceful doo/dah fallback
     assert body["identity"] is None  # conftest stubs lookup to a miss
+    assert body["chords"] == {"source": "audio", "agreement": None, "tab_url": None}
 
 
 def test_upload_reports_identity(monkeypatch, tmp_path):

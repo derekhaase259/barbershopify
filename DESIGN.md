@@ -206,3 +206,49 @@ acoustid.org (user keys, login credentials).
 **Tests stay offline.** `backend/tests/conftest.py` stubs both lookup functions to "no
 match" suite-wide, so `pytest` is deterministic and network-free even on machines with
 fpcalc installed; lookup-behavior tests monkeypatch the real values back in.
+
+### Tab chords (same date)
+
+**Align-and-relabel, not trust-the-tab.** Tabs are untimed and often transposed, so the
+audio keeps every span boundary (which also feeds meter/downbeat detection) and the tab
+only corrects identities — the exact error class chroma gets wrong (false minors, wrong
+roots, missed sevenths). A global alignment is run at all 12 transpositions (subsuming
+capo and off-pitch transfers; the tab's own key/capo metadata is ignored as unreliable),
+and the winner must agree with ≥50% of analyzed roots or the tab is rejected wholesale.
+There is no path where a tab degrades the chords without first agreeing with half of them.
+Key detection runs on the corrected spans, so a fixed false-minor can also fix the key.
+The tab sequence is aligned *uncompressed*: a tab restating C across lines is what lets a
+false-minor span pair with the real chord instead of falling into a gap (the 4-distinct-
+chord minimum still rejects two-chord ditties).
+
+**Why Chordie.** The 2026-06-11 probe found Ultimate Guitar, e-chords, UkuTabs, and
+Cifra Club all behind Cloudflare for plain requests; Chordie serves 200s and embeds each
+song's ChordPro source verbatim. Its search relevance is poor (covers outrank originals,
+and adding the artist to the query returns that artist's *other* songs — hence two merged
+searches), so candidates are verified against the AcoustID identity before parsing: the
+title must match by a majority of its tokens (any-overlap let "Jude the Obscene"
+impersonate "Hey Jude"), while the artist only *ranks* — same-artist sheets first, then
+same-title covers, because a cover keeps the harmony and the alignment gate against the
+actual audio is the real arbiter (strict artist matching cost us every Hallelujah:
+Chordie has it only as covers). maj7 maps to maj6 — barbershop never voices a major
+seventh.
+
+**Order matters.** Identification now runs right after beat tracking: tab correction must
+precede key detection, and lyrics need the identity later anyway. Tempo, meter, and
+downbeat phase remain purely audio-derived — a tab has no timing to contribute.
+
+### Progression adherence (same date)
+
+"Ensure the arrangement matches the chord progression" cannot mean per-chord equality:
+the spice dial *exists* to substitute (secondary dominants, passing diminisheds, swipes),
+and the melody is sacrosanct — when a structural melody note isn't in the input chord,
+realizing that chord is impossible by construction. So adherence is measured, not
+mandated: every structural vertical's four sung pitches are classified through the
+vocabulary (never by trusting `score.chords` labels) and count as adhering if any reading
+is the input chord, a same-root recoloring, a dominant-family chord rooted a fifth above
+the *next* input chord, a passing dim7, or a suspension/anticipation within a beat of a
+chord change. Filigree verticals and forced-substitution verticals leave the denominator;
+material beyond the input (the tag) is excluded. The number is a metric; only below a 50%
+floor does it become a violation — that means the chart wandered off the song, which is a
+bug, not artistry. Calibration on the demos: spice 1–2 = 1.00 exactly (below the
+substitution spice, the chart IS the song), spice 5 = 0.67–0.77.

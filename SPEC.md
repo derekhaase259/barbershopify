@@ -207,3 +207,19 @@ of speech recognition, which is skipped entirely on a hit. Free services only; t
 AcoustID application key is registered to us and committed. Melody and chords remain
 audio-analysis territory — no free database for them exists. Any lookup failure degrades
 to the previous behavior. Full design: docs/superpowers/specs/2026-06-11-song-lookup-design.md.
+
+Second extension, same date: identified songs also get their chord progression
+cross-checked against Chordie. Audio analysis keeps all timing; the tab corrects chord
+identities only, and only when the best of 12 transpositions agrees with ≥50% of the
+analyzed roots — otherwise the tab is discarded. Ultimate Guitar and the other major tab
+sites Cloudflare-block plain requests (probed 2026-06-11); Chordie serves embedded
+ChordPro cleanly. Full design: docs/superpowers/specs/2026-06-11-tab-chords-design.md.
+
+Third extension, same date: the validator now measures **progression adherence** — the
+fraction of structural verticals whose actually-sung four-part pitches realize the input
+progression, classified polyphonically rather than by trusting chord labels. Theory
+exceptions: same-root recolorings, secondary dominants approaching the next chord,
+passing diminisheds, suspensions/anticipations within a beat of a change, lead-filigree
+verticals, and verticals where the sacrosanct melody makes the input chord unrealizable.
+It is reported as a metric (sidebar: "Progression: NN% adherence") and becomes a named
+violation only below a 50% floor. Calibrated: spice 1–2 score 100%; spice 5 ~65–80%.

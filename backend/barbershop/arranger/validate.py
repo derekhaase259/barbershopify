@@ -5,12 +5,16 @@ by measure and beat: vocabulary legality, voice crossing, ranges, bass
 discipline, doubled thirds at repose, unresolved chordal 7ths, parallel
 octaves/fifths. NCT verticals (lead filigree under a held trio) are
 exempt from full classification but the trio must stay on chord tones.
+
+Also measures progression adherence: the fraction of structural
+verticals whose actually-sung pitches realize the *input* progression,
+classified polyphonically — never by trusting the score's chord labels.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from barbershop.score import ChordSpan, Note, Score, VoiceName
+from barbershop.score import ChordSpan, KeySig, Note, Score, VoiceName
 from barbershop.vocabulary import CHORDS, chord_degree, chord_pcs, classify
 from barbershop.arranger.config import RANGES
 
@@ -65,7 +69,13 @@ def _phrase_final_lead_notes(lead: list[Note], threshold: int) -> set[int]:
     return out
 
 
-def validate(score: Score, threshold: int | None = None) -> list[Violation]:
+def validate(
+    score: Score,
+    threshold: int | None = None,
+    *,
+    input_chords: list[ChordSpan] | None = None,
+    input_key: KeySig | None = None,
+) -> list[Violation]:
     if threshold is None:
         threshold = score.time.ticks_per_beat
     out: list[Violation] = []
@@ -208,10 +218,102 @@ def validate(score: Score, threshold: int | None = None) -> list[Violation]:
         if sounding[VoiceName.bass].midi % 12 != final.root_pc:
             report(t, "final-chord", "final chord not in root position")
 
+    # --- the chart must still be the song: progression adherence floor ---
+    if input_chords is not None and input_key is not None:
+        adherence = progression_adherence(score, input_chords, input_key, threshold)
+        if adherence is not None and adherence < ADHERENCE_FLOOR:
+            report(
+                0,
+                "progression",
+                f"chart realizes only {adherence:.0%} of the input progression "
+                f"(floor {ADHERENCE_FLOOR:.0%})",
+            )
+
     return out
 
 
-def metrics(score: Score) -> dict:
+def _tonic_pc(key: KeySig) -> int:
+    pc = (key.fifths * 7) % 12
+    if key.mode == "minor":
+        pc = (pc + 9) % 12  # fifths name the relative major
+    return pc
+
+
+def _adheres(
+    readings: list,
+    inp: ChordSpan,
+    prev: ChordSpan | None,
+    nxt: ChordSpan | None,
+    tick: int,
+    beat: int,
+) -> bool:
+    """Does any polyphonic reading of the sonority serve the input chord —
+    directly, or via the standard theory exceptions?"""
+    for r in readings:
+        if r.root_pc == inp.root_pc:
+            return True  # the chord itself, or a same-root recoloring (C -> C7)
+        if r.quality in _DOM_FAMILY and nxt is not None and r.root_pc == (nxt.root_pc + 7) % 12:
+            return True  # secondary dominant leading into the next chord
+        if r.quality == "dim7":
+            return True  # passing diminished (symmetric; its root is notation)
+        if prev is not None and tick - inp.onset < beat and r.root_pc == prev.root_pc:
+            return True  # suspension held across the change
+        if nxt is not None and inp.end - tick <= beat and r.root_pc == nxt.root_pc:
+            return True  # anticipation of the coming change
+    return False
+
+
+def progression_adherence(
+    score: Score,
+    input_chords: list[ChordSpan],
+    input_key: KeySig,
+    threshold: int | None = None,
+) -> float | None:
+    """Fraction of structural verticals whose sung pitches realize the input
+    progression (transposed into the score's key). Lead-filigree verticals
+    and material beyond the input (the tag) are out of the denominator.
+    None = nothing measurable."""
+    if not input_chords:
+        return None
+    if threshold is None:
+        threshold = score.time.ticks_per_beat
+    shift = (_tonic_pc(score.key) - _tonic_pc(input_key)) % 12
+    spans = sorted(
+        (c.model_copy(update={"root_pc": (c.root_pc + shift) % 12}) for c in input_chords),
+        key=lambda c: c.onset,
+    )
+    total = adhering = 0
+    for t in _event_ticks(score):
+        sounding = {v: n for v in VoiceName if (n := _sounding(score.voices[v], t))}
+        if len(sounding) < 4:
+            continue
+        if sounding[VoiceName.lead].duration < threshold:
+            continue  # passing tones / filigree: the NCT exemption
+        inp = _chord_at(spans, t)
+        if inp is None:
+            continue  # tag or other invented material beyond the input
+        if sounding[VoiceName.lead].midi % 12 not in chord_pcs(inp.root_pc, inp.quality):
+            continue  # the sacrosanct melody forces a substitution here:
+            # realizing the input chord is impossible by construction
+        i = spans.index(inp)
+        prev = spans[i - 1] if i > 0 else None
+        nxt = spans[i + 1] if i + 1 < len(spans) else None
+        total += 1
+        pcs = tuple(sounding[v].midi % 12 for v in VoiceName)
+        if _adheres(classify(pcs), inp, prev, nxt, t, threshold):
+            adhering += 1
+    return adhering / total if total else None
+
+
+ADHERENCE_FLOOR = 0.5
+
+
+def metrics(
+    score: Score,
+    *,
+    input_chords: list[ChordSpan] | None = None,
+    input_key: KeySig | None = None,
+) -> dict:
     """Quality metrics: not violations, but the bands a good chart hits."""
     spans = score.chords
     dom = sum(1 for c in spans if c.quality in _DOM_FAMILY)
@@ -238,8 +340,12 @@ def metrics(score: Score) -> dict:
             and last_tenor.midi - last_lead.midi <= 9
         )
 
-    return {
+    out = {
         "dom7_family_share": dom / len(spans) if spans else 0.0,
         "bass_root_fifth_share": bass_ok / bass_total if bass_total else 0.0,
         "final_chord_ring": ring,
     }
+    if input_chords is not None and input_key is not None:
+        adherence = progression_adherence(score, input_chords, input_key)
+        out["input_adherence"] = round(adherence, 3) if adherence is not None else None
+    return out

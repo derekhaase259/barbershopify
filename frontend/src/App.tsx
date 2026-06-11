@@ -292,6 +292,15 @@ export default function App() {
                   </dd>
                 </>
               )}
+              {arrangement.chords?.source === 'tab' && (
+                <>
+                  <dt>Chords</dt>
+                  <dd>
+                    matched tab ({Math.round((arrangement.chords.agreement ?? 0) * 100)}%
+                    agreement)
+                  </dd>
+                </>
+              )}
               <dt>Dominant 7th share</dt>
               <dd>{Math.round(arrangement.metrics.dom7_family_share * 100)}%</dd>
               <dt>Bass on root/5th</dt>
@@ -304,6 +313,12 @@ export default function App() {
                   ? 'clean'
                   : `${arrangement.violations.length} violations`}
               </dd>
+              {typeof arrangement.metrics.input_adherence === 'number' && (
+                <>
+                  <dt>Progression</dt>
+                  <dd>{Math.round(arrangement.metrics.input_adherence * 100)}% adherence</dd>
+                </>
+              )}
               {arrangement.lyrics && arrangement.lyrics.source !== 'none' && (
                 <>
                   <dt>Lyrics</dt>
