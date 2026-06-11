@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import tempfile
+from dataclasses import asdict
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, UploadFile
@@ -164,6 +165,7 @@ def arrange_test_song(song_id: str, options: ArrangeOptions) -> dict:
     result = analyze(str(path), title=_song_title(song_id))
     response = _arrangement_response(result.input, options.spice)
     response["lyrics"] = {"source": result.lyrics_source, "confidence": result.lyrics_confidence}
+    response["identity"] = asdict(result.identity) if result.identity else None
     return response
 
 
@@ -197,4 +199,5 @@ def upload_and_arrange(file: UploadFile, spice: int = 3) -> dict:
         os.unlink(tmp.name)
     response = _arrangement_response(result.input, spice)
     response["lyrics"] = {"source": result.lyrics_source, "confidence": result.lyrics_confidence}
+    response["identity"] = asdict(result.identity) if result.identity else None
     return response
