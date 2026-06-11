@@ -19,6 +19,7 @@ def test_list_demos():
 
 def test_arrange_demo_returns_score_and_musicxml():
     r = client.post("/api/demos/yankee-doodle/arrange", json={"spice": 3})
+    assert isinstance(r.json()["metrics"].get("input_adherence"), float)
     assert r.status_code == 200
     body = r.json()
     assert set(body["score"]["voices"]) == {"tenor", "lead", "bari", "bass"}

@@ -106,7 +106,7 @@ cd frontend && npm run dev
 | Upload fails with "no melody could be extracted" | Dense modern mixes (heavy drums, thick production) can defeat the melody tracker. Songs with a clear, prominent melody — like the bundled 78s — work best. |
 | Uploaded song wasn't identified (no "Identified" line) | Identification needs `fpcalc` (chromaprint, table above) and internet, and works best on commercially released recordings. Without it the app falls back to on-device transcription — everything still works. |
 | Looked-up lyrics are for the wrong song/version | The fingerprint matched a different release. Edit lyrics freely in the **Lyrics** panel — they're just a starting point. |
-| No "Chords — matched tab" line in the sidebar | Normal for most songs: it needs the song identified, a Chordie chord sheet by the same artist, and ≥50% agreement with what the audio analysis heard. Anything less and the chords come purely from audio analysis, as before. |
+| No "Chords — matched tab" line in the sidebar | Normal for most songs: it needs the song identified, a Chordie chord sheet of that song (covers count), and ≥50% agreement with what the audio analysis heard. Anything less and the chords come purely from audio analysis, as before. |
 | Page loads but charts never appear | The backend probably isn't running — look for errors in the `make dev` terminal. |
 | No sound | Click somewhere on the page first (browsers block audio until you interact), and check the per-voice mute buttons. |
 
@@ -117,6 +117,6 @@ arrangement engine (two-stage Viterbi over chords then voicings, with a barbersh
 chord-vocabulary validator that names any rule violation by measure and beat), MusicXML
 and MIDI serialization. React/Vite frontend: OpenSheetMusicDisplay engraving, Tone.js
 playback with root-anchored just intonation. `SPEC.md` is the full project spec,
-`DESIGN.md` explains the non-obvious choices, and `backend/tests/` (169 tests) is the
+`DESIGN.md` explains the non-obvious choices, and `backend/tests/` (221 tests) is the
 quality bar — run them with `make test`. Test recordings and their public-domain
 provenance live in [`test_songs/SOURCES.md`](test_songs/SOURCES.md).

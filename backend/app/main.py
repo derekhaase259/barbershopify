@@ -53,8 +53,10 @@ def _arrangement_response(inp: ArrangeInput, spice: int) -> dict:
         "input": inp.model_dump(),  # cached client-side so re-arrange skips analysis
         "score": score.model_dump(),
         "musicxml": to_musicxml(score),
-        "violations": [str(v) for v in validate(score)],
-        "metrics": metrics(score),
+        "violations": [
+            str(v) for v in validate(score, input_chords=inp.chords, input_key=inp.key)
+        ],
+        "metrics": metrics(score, input_chords=inp.chords, input_key=inp.key),
     }
 
 

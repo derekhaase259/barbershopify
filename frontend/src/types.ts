@@ -64,6 +64,7 @@ export interface Arrangement {
     dom7_family_share: number
     bass_root_fifth_share: number
     final_chord_ring: boolean
+    input_adherence?: number | null
   }
   lyrics?: { source: 'asr' | 'neutral' | 'lrclib' | 'none'; confidence: number }
   identity?: {

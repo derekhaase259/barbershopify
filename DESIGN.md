@@ -236,3 +236,19 @@ seventh.
 **Order matters.** Identification now runs right after beat tracking: tab correction must
 precede key detection, and lyrics need the identity later anyway. Tempo, meter, and
 downbeat phase remain purely audio-derived — a tab has no timing to contribute.
+
+### Progression adherence (same date)
+
+"Ensure the arrangement matches the chord progression" cannot mean per-chord equality:
+the spice dial *exists* to substitute (secondary dominants, passing diminisheds, swipes),
+and the melody is sacrosanct — when a structural melody note isn't in the input chord,
+realizing that chord is impossible by construction. So adherence is measured, not
+mandated: every structural vertical's four sung pitches are classified through the
+vocabulary (never by trusting `score.chords` labels) and count as adhering if any reading
+is the input chord, a same-root recoloring, a dominant-family chord rooted a fifth above
+the *next* input chord, a passing dim7, or a suspension/anticipation within a beat of a
+chord change. Filigree verticals and forced-substitution verticals leave the denominator;
+material beyond the input (the tag) is excluded. The number is a metric; only below a 50%
+floor does it become a violation — that means the chart wandered off the song, which is a
+bug, not artistry. Calibration on the demos: spice 1–2 = 1.00 exactly (below the
+substitution spice, the chart IS the song), spice 5 = 0.67–0.77.
