@@ -13,7 +13,8 @@ _TEMPLATES: dict[str, tuple[int, ...]] = {
     "dim7": (0, 3, 6, 9),
 }
 
-_SELF_TRANSITION_BONUS = 0.35  # log-domain reward for staying on a chord
+_SELF_TRANSITION_BONUS = 0.15  # reward for staying on a chord; tuned against
+# the bundled 78s: 0.35 froze entire songs onto 7 chords, 0.05 jitters
 
 
 def _states() -> list[tuple[int, str]]:
@@ -79,6 +80,25 @@ def best_downbeat_phase(labels: list[tuple[int, str]], beats_per_measure: int = 
         if labels[b] != labels[b - 1]:
             scores[b % beats_per_measure] += 1
     return int(np.argmax(scores))
+
+
+def best_meter_and_phase(labels: list[tuple[int, str]]) -> tuple[int, int]:
+    """Vote 3/4 vs 4/4 by where chord changes cluster. Concentration is
+    compared as lift above chance (1/meter), since a 3-beat bar
+    concentrates more by accident than a 4-beat one."""
+    changes = [b for b in range(1, len(labels)) if labels[b] != labels[b - 1]]
+    if len(changes) < 4:
+        return 4, best_downbeat_phase(labels)
+    best = (4, 0, -1.0)
+    for meter in (3, 4):
+        scores = [0] * meter
+        for b in changes:
+            scores[b % meter] += 1
+        phase = int(np.argmax(scores))
+        lift = scores[phase] / len(changes) - 1.0 / meter
+        if lift > best[2]:
+            best = (meter, phase, lift)
+    return best[0], best[1]
 
 
 def spans_from_labels(labels: list[tuple[int, str]], grid: BeatGrid) -> list[ChordSpan]:

@@ -41,6 +41,32 @@ def _frames_to_notes(
     return notes
 
 
+def consolidate_segments(
+    segments: list[tuple[float, float, float]],
+    *,
+    max_gap: float = 0.12,
+    pitch_tolerance: float = 0.8,
+    min_duration: float = 0.09,
+) -> list[tuple[float, float, float]]:
+    """Heal pyin fragmentation: vibrato and surface noise chop one sung
+    note into shards. Merge same-pitch neighbors across micro-gaps
+    (true legato breaks are longer), then drop ultra-short slivers."""
+    merged: list[list[float]] = []
+    for midi, t0, t1 in segments:
+        if (
+            merged
+            and t0 - merged[-1][2] <= max_gap
+            and abs(midi - merged[-1][0]) <= pitch_tolerance
+        ):
+            prev = merged[-1]
+            total = (prev[2] - prev[1]) + (t1 - t0)
+            prev[0] = (prev[0] * (prev[2] - prev[1]) + midi * (t1 - t0)) / total
+            prev[2] = t1
+        else:
+            merged.append([midi, t0, t1])
+    return [(m, a, b) for m, a, b in merged if b - a >= min_duration]
+
+
 def _fold_octave_outliers(notes: list[Note], window: int = 5, tolerance: int = 7) -> None:
     """pyin's classic failure is the octave jump: fold notes that sit more
     than a fifth from their local median back toward it, in octaves."""
@@ -53,7 +79,12 @@ def _fold_octave_outliers(notes: list[Note], window: int = 5, tolerance: int = 7
             note.midi += 12
 
 
-def extract(y: np.ndarray, sr: int, grid: BeatGrid, *, fmin: float = 110.0, fmax: float = 1000.0) -> list[Note]:
+def extract_segments(
+    y: np.ndarray, sr: int, *, fmin: float = 110.0, fmax: float = 1000.0
+) -> list[tuple[float, float, float]]:
+    """Raw pyin (midi, t0, t1) segments in seconds, fragmentation healed.
+    Separated from quantization so the pipeline can use real note
+    durations to sanity-check the beat tracker's metrical level."""
     import librosa
 
     f0, voiced, _ = librosa.pyin(
@@ -61,9 +92,12 @@ def extract(y: np.ndarray, sr: int, grid: BeatGrid, *, fmin: float = 110.0, fmax
     )
     times = librosa.times_like(f0, sr=sr, hop_length=HOP)
     raw = _frames_to_notes(np.asarray(f0), np.asarray(voiced), np.asarray(times))
+    return consolidate_segments(raw)
 
+
+def quantize(segments: list[tuple[float, float, float]], grid: BeatGrid) -> list[Note]:
     out: list[Note] = []
-    for midi, t0, t1 in raw:
+    for midi, t0, t1 in segments:
         a = grid.time_to_tick(t0)
         b = grid.time_to_tick(t1)
         onset = int(round(a / GRID)) * GRID
@@ -80,3 +114,7 @@ def extract(y: np.ndarray, sr: int, grid: BeatGrid, *, fmin: float = 110.0, fmax
         out.append(note)
     _fold_octave_outliers(out)
     return out
+
+
+def extract(y: np.ndarray, sr: int, grid: BeatGrid, *, fmin: float = 110.0, fmax: float = 1000.0) -> list[Note]:
+    return quantize(extract_segments(y, sr, fmin=fmin, fmax=fmax), grid)

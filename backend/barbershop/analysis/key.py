@@ -12,6 +12,39 @@ _MINOR = np.array([6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3
 _MAJOR_FIFTHS = {0: 0, 7: 1, 2: 2, 9: 3, 4: 4, 11: 5, 6: 6, 1: -5, 8: -4, 3: -3, 10: -2, 5: -1}
 
 
+def key_from_chords(spans) -> KeySig | None:
+    """Vote the key from smoothed chord labels (duration-weighted diatonic
+    membership + cadence bonus). On noisy recordings this beats raw-chroma
+    profile correlation, which the smoothing has already denoised."""
+    if not spans:
+        return None
+    # diatonic triad roots: (tonic-relative root pc, quality) per mode
+    major_chords = {(0, "maj"), (5, "maj"), (7, "maj"), (7, "dom7"), (2, "min"), (9, "min"), (4, "min")}
+    minor_chords = {(0, "min"), (5, "min"), (7, "min"), (7, "dom7"), (8, "maj"), (3, "maj"), (10, "maj"), (2, "dim7")}
+    best: tuple[float, int, str] | None = None
+    total = sum(c.duration for c in spans)
+    for tonic in range(12):
+        for mode, table in (("major", major_chords), ("minor", minor_chords)):
+            score = 0.0
+            for c in spans:
+                rel = ((c.root_pc - tonic) % 12, c.quality)
+                if rel in table:
+                    score += c.duration
+                    if rel[0] == 0:  # time spent on the tonic counts double
+                        score += 0.5 * c.duration
+            for edge in (spans[0], spans[-1]):  # songs start and end home
+                if (edge.root_pc - tonic) % 12 == 0:
+                    score += 0.15 * total
+            if best is None or score > best[0]:
+                best = (score, tonic, mode)
+    score, tonic, mode = best
+    if score < 0.5 * total:
+        return None  # not confidently diatonic; let chroma decide
+    if mode == "major":
+        return KeySig(fifths=_MAJOR_FIFTHS[tonic], mode="major")
+    return KeySig(fifths=_MAJOR_FIFTHS[(tonic + 3) % 12], mode="minor")
+
+
 def detect(chroma_mean: np.ndarray) -> KeySig:
     best: tuple[float, int, str] = (-2.0, 0, "major")
     for tonic in range(12):
