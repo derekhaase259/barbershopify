@@ -65,7 +65,14 @@ export interface Arrangement {
     bass_root_fifth_share: number
     final_chord_ring: boolean
   }
-  lyrics?: { source: 'asr' | 'neutral' | 'none'; confidence: number }
+  lyrics?: { source: 'asr' | 'neutral' | 'lrclib' | 'none'; confidence: number }
+  identity?: {
+    title: string
+    artist: string
+    year: number | null
+    recording_mbid: string
+    match_score: number
+  } | null
   composition?: {
     mode: 'major' | 'minor'
     tempo: number

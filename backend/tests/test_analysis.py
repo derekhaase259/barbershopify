@@ -111,3 +111,76 @@ def test_analysis_feeds_the_arranger(analysis):
 
     score = arrange(analysis.input, ArrangerConfig(spice=3))
     assert validate(score) == []
+
+
+from barbershop.lookup.identify import SongIdentity
+from barbershop.lookup.lyrics import LookedUpLyrics
+
+IDENT = SongIdentity(
+    title="Synth Song", artist="Test Quartet", year=1999,
+    recording_mbid="mbid-x", match_score=0.9,
+)
+
+
+def test_lookup_hit_uses_real_lyrics_and_skips_asr(test_wav, monkeypatch):
+    monkeypatch.setattr("barbershop.lookup.identify.identify", lambda *a, **k: IDENT)
+    monkeypatch.setattr(
+        "barbershop.lookup.lyrics.fetch_lyrics",
+        lambda *a, **k: LookedUpLyrics(
+            synced=[(0.0, "shine on me"), (4.0, "harvest moon")], plain=None
+        ),
+    )
+    monkeypatch.setattr(
+        "barbershop.analysis.asr.transcribe",
+        lambda path: pytest.fail("ASR must not run when lookup provides lyrics"),
+    )
+    result = analyze(str(test_wav), use_cache=False)
+    assert result.identity == IDENT
+    assert result.lyrics_source == "lrclib"
+    assert result.input.title == "Synth Song"  # identified title beats filename
+    words = " ".join(n.lyric.text for n in result.input.melody if n.lyric)
+    assert "shine" in words
+
+
+def test_lookup_plain_lyrics_fall_back_to_positional_setting(test_wav, monkeypatch):
+    monkeypatch.setattr("barbershop.lookup.identify.identify", lambda *a, **k: IDENT)
+    monkeypatch.setattr(
+        "barbershop.lookup.lyrics.fetch_lyrics",
+        lambda *a, **k: LookedUpLyrics(synced=None, plain="shine on me\nharvest moon"),
+    )
+    result = analyze(str(test_wav), use_cache=False)
+    assert result.lyrics_source == "lrclib"
+    assert any(n.lyric for n in result.input.melody)
+
+
+def test_lookup_crash_changes_nothing(test_wav, monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("lookup exploded")
+
+    monkeypatch.setattr("barbershop.lookup.identify.identify", boom)
+    monkeypatch.setattr("barbershop.analysis.asr.transcribe", lambda path: None)
+    result = analyze(str(test_wav), use_cache=False)
+    assert result.identity is None
+    assert result.lyrics_source == "neutral"  # exactly today's fallback path
+
+
+def test_cache_roundtrips_identity_and_title_rule(test_wav, monkeypatch, tmp_path):
+    monkeypatch.setattr("barbershop.analysis.pipeline.CACHE_DIR", tmp_path)
+    monkeypatch.setattr("barbershop.lookup.identify.identify", lambda *a, **k: IDENT)
+    monkeypatch.setattr(
+        "barbershop.lookup.lyrics.fetch_lyrics",
+        lambda *a, **k: LookedUpLyrics(synced=None, plain="shine on me"),
+    )
+    first = analyze(str(test_wav), use_cache=True)
+    assert first.identity == IDENT
+
+    # cache hit: lookup must not run again; identified title survives the
+    # filename-derived title parameter
+    monkeypatch.setattr(
+        "barbershop.lookup.identify.identify",
+        lambda *a, **k: pytest.fail("cache hit must not re-identify"),
+    )
+    second = analyze(str(test_wav), use_cache=True, title="synth")
+    assert second.identity == IDENT
+    assert second.input.title == "Synth Song"
+    assert second.lyrics_source == "lrclib"

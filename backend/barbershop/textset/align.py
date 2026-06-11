@@ -9,6 +9,7 @@ the resulting sub-notes get. Rhythm may change (splits); pitch never.
 """
 from __future__ import annotations
 
+from bisect import bisect_right
 from dataclasses import dataclass
 
 from barbershop.score import Lyric, Note, Syllabic, TimeSig
@@ -169,6 +170,37 @@ def set_lyrics(
     for extra in line_sylls[len(phrases):]:
         per_phrase[-1].extend(extra)
 
+    return _set_per_phrase(phrases, per_phrase, time, elasticity=elasticity)
+
+
+def set_timed_lines(
+    melody: list[Note],
+    lines: list[tuple[int, str]],
+    time: TimeSig,
+    *,
+    elasticity: float = 0.4,
+) -> tuple[list[Note], list[FitReport]]:
+    """Set time-anchored lyric lines (onset_tick, text) under a melody.
+    Each line lands in the phrase containing its onset, so instrumental
+    intros and interludes correctly receive no words. The caller converts
+    wall-clock stamps to ticks; textset stays ignorant of beat grids."""
+    GRACE = 240  # singers and LRC stamps run up to a half-beat early
+    phrases = split_phrases(melody)
+    starts = [phrase[0].onset for phrase in phrases]
+    per_phrase: list[list[Syllable]] = [[] for _ in phrases]
+    for tick, text in sorted(lines, key=lambda x: x[0]):
+        idx = max(0, bisect_right(starts, tick + GRACE) - 1)
+        per_phrase[idx].extend(syllabify_line(text))
+    return _set_per_phrase(phrases, per_phrase, time, elasticity=elasticity)
+
+
+def _set_per_phrase(
+    phrases: list[list[Note]],
+    per_phrase: list[list[Syllable]],
+    time: TimeSig,
+    *,
+    elasticity: float,
+) -> tuple[list[Note], list[FitReport]]:
     out_notes: list[Note] = []
     reports: list[FitReport] = []
     for idx, (phrase, sylls) in enumerate(zip(phrases, per_phrase)):

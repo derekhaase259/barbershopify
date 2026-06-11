@@ -7,7 +7,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+import logging
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import numpy as np
@@ -18,9 +19,12 @@ from barbershop.analysis import key as key_mod
 from barbershop.analysis import melody as melody_mod
 from barbershop.analysis.decode import load_audio
 from barbershop.arranger.arrange import ArrangeInput
+from barbershop.lookup.identify import SongIdentity
 from barbershop.score import TimeSig
 
 CACHE_DIR = Path(__file__).resolve().parents[2] / "cache"
+
+log = logging.getLogger(__name__)
 
 
 def correct_tempo_level(
@@ -58,8 +62,9 @@ class AnalysisResult:
     input: ArrangeInput
     tempo: float
     duration_seconds: float
-    lyrics_source: str = "none"  # asr / neutral / none
+    lyrics_source: str = "none"  # lrclib / asr / neutral / none
     lyrics_confidence: float = 0.0
+    identity: SongIdentity | None = None
 
 
 def _cache_key(path: str) -> str:
@@ -71,20 +76,27 @@ def _cache_key(path: str) -> str:
 
 
 def analyze(
-    path: str, *, title: str | None = None, use_cache: bool = True, lyrics: bool = True
+    path: str,
+    *,
+    title: str | None = None,
+    use_cache: bool = True,
+    lyrics: bool = True,
+    lookup: bool = True,
 ) -> AnalysisResult:
-    cache_file = CACHE_DIR / f"{_cache_key(path)}-v3.json"
+    cache_file = CACHE_DIR / f"{_cache_key(path)}-v4.json"
     if use_cache and cache_file.exists():
         data = json.loads(cache_file.read_text())
         inp = ArrangeInput.model_validate(data["input"])
-        if title:
-            inp.title = title  # the cache stores whatever title it was first given
+        identity = SongIdentity(**data["identity"]) if data.get("identity") else None
+        if title and identity is None:
+            inp.title = title  # filename titles never beat an identified title
         return AnalysisResult(
             input=inp,
             tempo=data["tempo"],
             duration_seconds=data["duration_seconds"],
             lyrics_source=data.get("lyrics_source", "none"),
             lyrics_confidence=data.get("lyrics_confidence", 0.0),
+            identity=identity,
         )
 
     y, sr = load_audio(path)
@@ -99,6 +111,7 @@ def analyze(
         grid = corrected
         labels = chords_mod.label_beats(y, sr, grid.beat_times)
     meter, grid.downbeat_phase = chords_mod.best_meter_and_phase(labels)
+    time = TimeSig(beats=meter, beat_type=4)
 
     segments = melody_mod.extract_segments(y, sr)
     melody = melody_mod.quantize(segments, grid)
@@ -116,23 +129,52 @@ def analyze(
     if not chord_spans:
         raise ValueError("no chords could be estimated from this audio")
 
+    identity = None
+    if lookup:
+        try:
+            from barbershop.lookup.identify import identify
+
+            identity = identify(path, duration=len(y) / sr)
+        except Exception:
+            log.info("song lookup: identification crashed, continuing", exc_info=True)
+
     lyrics_source, lyrics_confidence = "none", 0.0
     if lyrics:
-        from barbershop.analysis import asr
+        looked_up = None
+        if identity is not None:
+            try:
+                from barbershop.lookup.lyrics import fetch_lyrics
 
-        words = asr.transcribe(path)
-        if words:
-            lyrics_confidence = asr.mean_confidence(words)
-        if words and asr.attach_lyrics(melody, words, grid):
-            lyrics_source = "asr"
+                looked_up = fetch_lyrics(identity, duration=len(y) / sr)
+            except Exception:
+                log.info("song lookup: lyrics fetch crashed, continuing", exc_info=True)
+        if looked_up is not None and looked_up.synced:
+            from barbershop.textset.align import set_timed_lines
+
+            lines = [(int(round(grid.time_to_tick(t))), txt) for t, txt in looked_up.synced]
+            melody, _ = set_timed_lines(melody, lines, time)
+            lyrics_source = "lrclib"
+        elif looked_up is not None and looked_up.plain:
+            from barbershop.textset.align import set_lyrics
+
+            melody, _ = set_lyrics(melody, looked_up.plain, time)
+            lyrics_source = "lrclib"
         else:
-            asr.neutral_lyrics(melody)  # honest fallback, never nonsense
-            lyrics_source = "neutral"
+            from barbershop.analysis import asr
+
+            words = asr.transcribe(path)
+            if words:
+                lyrics_confidence = asr.mean_confidence(words)
+            if words and asr.attach_lyrics(melody, words, grid):
+                lyrics_source = "asr"
+            else:
+                asr.neutral_lyrics(melody)  # honest fallback, never nonsense
+                lyrics_source = "neutral"
 
     inp = ArrangeInput(
-        title=title or Path(path).stem,
+        title=(identity.title if identity else None) or title or Path(path).stem,
         key=detected_key,
-        time=TimeSig(beats=meter, beat_type=4),
+        time=time,
         tempo=round(grid.tempo, 1),
         melody=melody,
         chords=chord_spans,
@@ -143,6 +185,7 @@ def analyze(
         duration_seconds=len(y) / sr,
         lyrics_source=lyrics_source,
         lyrics_confidence=round(lyrics_confidence, 3),
+        identity=identity,
     )
     if use_cache:
         CACHE_DIR.mkdir(exist_ok=True)
@@ -154,6 +197,7 @@ def analyze(
                     "duration_seconds": result.duration_seconds,
                     "lyrics_source": result.lyrics_source,
                     "lyrics_confidence": result.lyrics_confidence,
+                    "identity": asdict(identity) if identity else None,
                 }
             )
         )

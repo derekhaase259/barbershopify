@@ -283,6 +283,15 @@ export default function App() {
 
           {arrangement && stage === 'ready' && (
             <dl className="fine-print">
+              {arrangement.identity && (
+                <>
+                  <dt>Identified</dt>
+                  <dd>
+                    ♪ {arrangement.identity.title} — {arrangement.identity.artist}
+                    {arrangement.identity.year ? ` (${arrangement.identity.year})` : ''}
+                  </dd>
+                </>
+              )}
               <dt>Dominant 7th share</dt>
               <dd>{Math.round(arrangement.metrics.dom7_family_share * 100)}%</dd>
               <dt>Bass on root/5th</dt>
@@ -299,9 +308,11 @@ export default function App() {
                 <>
                   <dt>Lyrics</dt>
                   <dd>
-                    {arrangement.lyrics.source === 'asr'
-                      ? `heard (${Math.round(arrangement.lyrics.confidence * 100)}% sure)`
-                      : 'doo/dah (transcription unclear)'}
+                    {arrangement.lyrics.source === 'lrclib'
+                      ? 'looked up (LRCLIB)'
+                      : arrangement.lyrics.source === 'asr'
+                        ? `heard (${Math.round(arrangement.lyrics.confidence * 100)}% sure)`
+                        : 'doo/dah (transcription unclear)'}
                   </dd>
                 </>
               )}

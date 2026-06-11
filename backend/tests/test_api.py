@@ -94,15 +94,10 @@ def test_upload_rejects_unknown_extension():
     assert r.status_code == 422
 
 
-def test_upload_happy_path(monkeypatch, tmp_path):
-    """A real WAV through the real multipart endpoint (ASR stubbed out so
-    the test never loads the whisper model — exercising the doo/dah path)."""
+def _make_test_wav(tmp_path):
+    """A tiny analyzable WAV: sine melody with clicks, like the happy path uses."""
     import numpy as np
     import soundfile as sf
-
-    from barbershop.analysis import asr
-
-    monkeypatch.setattr(asr, "transcribe", lambda path: None)
 
     sr, beat = 22050, 0.5
     melody = [60, 62, 64, 65, 67, 64, 60, 62]
@@ -115,8 +110,18 @@ def test_upload_happy_path(monkeypatch, tmp_path):
         y[int(i * beat * sr) : int(i * beat * sr) + 200] += np.linspace(0.4, 0, 200)  # click
     path = tmp_path / "tiny.wav"
     sf.write(path, y.astype(np.float32), sr)
+    return path
 
-    with open(path, "rb") as f:
+
+def test_upload_happy_path(monkeypatch, tmp_path):
+    """A real WAV through the real multipart endpoint (ASR stubbed out so
+    the test never loads the whisper model — exercising the doo/dah path)."""
+    from barbershop.analysis import asr
+
+    monkeypatch.setattr(asr, "transcribe", lambda path: None)
+    monkeypatch.setattr("barbershop.analysis.pipeline.CACHE_DIR", tmp_path)
+
+    with open(_make_test_wav(tmp_path), "rb") as f:
         r = client.post(
             "/api/upload?spice=2", files={"file": ("tiny.wav", f, "audio/wav")}
         )
@@ -124,3 +129,29 @@ def test_upload_happy_path(monkeypatch, tmp_path):
     body = r.json()
     assert body["score"]["voices"]["lead"]
     assert body["lyrics"]["source"] == "neutral"  # graceful doo/dah fallback
+    assert body["identity"] is None  # conftest stubs lookup to a miss
+
+
+def test_upload_reports_identity(monkeypatch, tmp_path):
+    from barbershop.analysis import asr
+    from barbershop.lookup.identify import SongIdentity
+
+    monkeypatch.setattr(asr, "transcribe", lambda path: None)
+    monkeypatch.setattr("barbershop.analysis.pipeline.CACHE_DIR", tmp_path)
+    monkeypatch.setattr(
+        "barbershop.lookup.identify.identify",
+        lambda *a, **k: SongIdentity(
+            title="Synth Song", artist="Test Quartet", year=1999,
+            recording_mbid="mbid-x", match_score=0.9,
+        ),
+    )
+
+    with open(_make_test_wav(tmp_path), "rb") as f:
+        r = client.post(
+            "/api/upload?spice=2", files={"file": ("synth.wav", f, "audio/wav")}
+        )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["identity"]["title"] == "Synth Song"
+    assert body["identity"]["year"] == 1999
+    assert body["score"]["title"] == "Synth Song"
