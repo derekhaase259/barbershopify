@@ -19,18 +19,23 @@ detection votes from chord labels, so better chords directly produce better arra
 |---|---|
 | Trigger | Identified songs only — piggybacks on AcoustID, like lyrics. No manual title/artist field. |
 | Integration | **Align + relabel**: audio keeps span timing; tab corrects roots/qualities via 12-transposition global alignment; ≥50% root-agreement gate or the tab is discarded. Not a Viterbi prior (no clean reject gate, reopens tuning); not full tab reconstruction (too fragile). |
-| Source | Ultimate Guitar only, scraped from the embedded `js-store` JSON. One source; the feature fail-softs, so a second scraper isn't worth its fragile surface. |
+| Source | ~~Ultimate Guitar~~ **Chordie** (decided by the Task 0 probe, 2026-06-11: UG, e-chords, UkuTabs, and Cifra Club song pages all serve Cloudflare challenges to plain `requests`; Chordie serves 200s and embeds clean ChordPro source). One source; the feature fail-softs, so a second scraper isn't worth its fragile surface. |
 | Capo/tab-key metadata | Deliberately ignored — the 12-transposition search subsumes capo, transposed tabs, and off-pitch transfers. |
 | Disagreement | Melody stays sacrosanct: corrected chords are still only the harmonizer's prior; melody-containment remains the hard constraint. |
 
 ## Components (all in `backend/barbershop/lookup/`)
 
-- **`tabs.py`** — `fetch_chords(identity) -> TabChords | None`. Two requests, plain
-  `requests` with a browser User-Agent: (1) UG search
-  (`search.php?search_type=title&value={artist} {title}`), read `js-store` JSON, pick the
-  best Chords-type result by rating × votes; (2) the tab page, extract chord tokens in
-  order from `[ch]...[/ch]` markers in `wiki_tab.content`.
-  `TabChords(chords: list[str], url: str, votes: int)`. Never raises.
+- **`tabs.py`** — `fetch_chords(identity) -> TabChords | None`. Plain `requests` with a
+  browser User-Agent against Chordie: (1) search
+  (`https://www.chordie.com/results.php?q={title} {artist}`), collect the song links
+  (`/chord.pere/...`), deduplicated, first 5 candidates; (2) fetch candidates in order and
+  take the first whose embedded ChordPro source (`<textarea id="chordproContent">`)
+  matches the identity — `{st:}` artist and `{t:}` title verified by normalized token
+  overlap, because Chordie's search relevance is loose (probe found a Wilson Pickett
+  cover as the top "Hey Jude" hit). Chord tokens come from the ChordPro body in order:
+  strip `{sot}…{eot}` tablature blocks and `#` comment lines, then collect inline
+  `[C]`/`[F#m7]` brackets. Require ≥ 4 tokens. `TabChords(chords: list[str], url: str,
+  artist: str, title: str)`. Never raises.
 - **`chordnames.py`** — `parse_chord(name) -> tuple[int, str] | None` mapping guitar
   names into the arranger vocabulary: `m→min`, `7→dom7`, `m7→min7`, `maj7→maj6` (the
   barbershop substitute; maj7 is never voiced), `m7b5→halfdim7`, `dim/dim7→dim7`,
@@ -87,14 +92,18 @@ agreement)"**. No row = pure audio analysis. No new controls.
 - Endpoint: `chords` field present on both analyze endpoints.
 - Standing verification: a real identified song end-to-end, plus the offline probe.
 
-## Known risk (and Task 0)
+## Known risk (and Task 0 — resolved 2026-06-11)
 
-Ultimate Guitar's tolerance of plain `requests` is the least stable dependency in the
-project — scrapers work today, but Cloudflare policies change. **Implementation Task 0 is
-a live probe** (one search page + one tab page) before anything is built on the
-assumption. If UG blocks: try header adjustments; failing that, swap the source site
-behind the same `TabChords` interface — and report back before proceeding. Whatever
-breaks later, the runtime failure mode is always "chords come from audio analysis."
+The Task 0 live probe ran during planning. Findings: Ultimate Guitar (search **and** tab
+pages, even with full browser headers), e-chords, UkuTabs, and Cifra Club song pages all
+return 403 Cloudflare challenges to plain `requests`. **Chordie** serves 200s: its search
+works and every song page embeds the full ChordPro source in
+`<textarea id="chordproContent">` — cleaner to parse than UG's `[ch]` markup. The source
+swap above is the fallback the original risk section prescribed. Chordie aggregates
+third-party tab sites (e.g. guitaretab.com), so coverage is smaller than UG's and search
+relevance is looser — hence the artist/title verification step and the alignment gate.
+Scraping remains the least stable dependency in the project; whatever breaks later, the
+runtime failure mode is always "chords come from audio analysis."
 
 ## Out of scope
 
