@@ -198,3 +198,12 @@ The `README.md` is the front door for non-experts cloning a private repo. It mus
 7. **Polish + README**: embellishments (swipes first, then tags, key changes, bells per spice gating), just intonation playback mode, voice-leading refinements; finalize the friend-proof README and verify it from a clean clone.
 
 At each milestone, run it yourself, look at/listen to the actual output, and fix what's musically or visually wrong before declaring it done. I will judge this on whether the demo arrangement actually sounds like barbershop.
+
+## Addendum (2026-06-11): song lookup
+
+Agreed extension beyond the original brief: uploads are fingerprinted (chromaprint →
+AcoustID) to identify the song, and identified songs get real lyrics from LRCLIB instead
+of speech recognition, which is skipped entirely on a hit. Free services only; the one
+AcoustID application key is registered to us and committed. Melody and chords remain
+audio-analysis territory — no free database for them exists. Any lookup failure degrades
+to the previous behavior. Full design: docs/superpowers/specs/2026-06-11-song-lookup-design.md.

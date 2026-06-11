@@ -17,6 +17,7 @@ Install these four things (each link has one-click installers):
 | **Python** | **3.12** | `brew install python@3.12` or [python.org](https://www.python.org/downloads/) | [python.org](https://www.python.org/downloads/) / `sudo apt install python3.12 python3.12-venv` |
 | **Node.js** | 20 or newer | `brew install node` or [nodejs.org](https://nodejs.org/) | [nodejs.org](https://nodejs.org/) / `sudo apt install nodejs npm` |
 | **ffmpeg** | any recent | `brew install ffmpeg` | [ffmpeg.org](https://ffmpeg.org/download.html) / `sudo apt install ffmpeg` |
+| **chromaprint** | any recent — *optional: enables song identification* | `brew install chromaprint` | [acoustid.org/chromaprint](https://acoustid.org/chromaprint) / `sudo apt install libchromaprint-tools` |
 
 > **Windows users:** the smoothest path is [WSL2](https://learn.microsoft.com/windows/wsl/install)
 > (Ubuntu), then follow the Linux commands inside it. Native Windows works too if you have
@@ -70,7 +71,10 @@ cd frontend && npm run dev
   finding the beat, key, melody, chords, and listening for words) and is instant after
   that. Honest warning: ASR on a century-old 78 is rough — that's why every lyric is
   editable, and why uncertain transcriptions fall back to "doo"/"dah".
-- **Your own song:** drop an `.mp3`, `.m4a`, or `.wav` on **"Drop a song here."**
+- **Your own song:** drop an `.mp3`, `.m4a`, or `.wav` on **"Drop a song here."** When
+  you're online, the app fingerprints the upload (the fingerprint — not your audio — goes
+  to acoustid.org) and, if recognized, pulls the real lyrics from lrclib.net instead of
+  guessing them from the recording. The sidebar shows what was identified.
 - **From a poem:** paste any poem into **From a Poem** and hit **Compose** — no audio at
   all. A sad poem comes back minor and slow; a joyful one major and quick. **Re-compose**
   rolls a fresh melody for the same words.
@@ -99,6 +103,8 @@ cd frontend && npm run dev
 | First Victrola song or upload takes forever | The speech-recognition model (~150 MB) downloads on first use. It's a one-time cost; later songs are much faster. |
 | "You are sending unauthenticated requests to the HF Hub" | Harmless. That's the speech model downloading from Hugging Face; anonymous downloads are fine. It only happens once. |
 | Upload fails with "no melody could be extracted" | Dense modern mixes (heavy drums, thick production) can defeat the melody tracker. Songs with a clear, prominent melody — like the bundled 78s — work best. |
+| Uploaded song wasn't identified (no "Identified" line) | Identification needs `fpcalc` (chromaprint, table above) and internet, and works best on commercially released recordings. Without it the app falls back to on-device transcription — everything still works. |
+| Looked-up lyrics are for the wrong song/version | The fingerprint matched a different release. Edit lyrics freely in the **Lyrics** panel — they're just a starting point. |
 | Page loads but charts never appear | The backend probably isn't running — look for errors in the `make dev` terminal. |
 | No sound | Click somewhere on the page first (browsers block audio until you interact), and check the per-voice mute buttons. |
 
@@ -109,6 +115,6 @@ arrangement engine (two-stage Viterbi over chords then voicings, with a barbersh
 chord-vocabulary validator that names any rule violation by measure and beat), MusicXML
 and MIDI serialization. React/Vite frontend: OpenSheetMusicDisplay engraving, Tone.js
 playback with root-anchored just intonation. `SPEC.md` is the full project spec,
-`DESIGN.md` explains the non-obvious choices, and `backend/tests/` (138 tests) is the
+`DESIGN.md` explains the non-obvious choices, and `backend/tests/` (168 tests) is the
 quality bar — run them with `make test`. Test recordings and their public-domain
 provenance live in [`test_songs/SOURCES.md`](test_songs/SOURCES.md).

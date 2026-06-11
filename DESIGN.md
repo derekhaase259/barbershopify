@@ -166,3 +166,43 @@ The ring metric also treats only major finals as "ringing," so minor-key compose
 `demucs` a Torch stack — both are quality boosters for dense modern mixes, so they're behind
 config flags with lazy imports rather than install-time requirements. (Spec allows either default;
 this is the pragmatic-install choice.)
+
+## Song lookup (2026-06-11)
+
+**Why lookup at all, and why only for identity and lyrics.** Crowdsourced databases
+already know what a song *is* (AcoustID fingerprints) and what its words are (LRCLIB),
+and both beat reconstructing those from a noisy waveform — our weakest analysis link was
+Whisper guessing words through 78-rpm surface noise. But no free database serves melodies
+or chords; even Shazam only matches fingerprints to names. So analysis remains the
+backbone for everything musical, and lookup augments it. (MIDI-archive hunting was
+considered and rejected: spotty coverage, wild quality variance, and melody-channel
+detection is its own analysis problem.)
+
+**The fail-soft rule.** Lookup may never break analysis. It's enforced twice: both
+`lookup/identify.py` and `lookup/lyrics.py` catch everything internally and return
+`None`, and `pipeline.analyze()` wraps the calls in a second `try/except`. Offline, the
+app behaves exactly as before the feature existed. HTTP timeouts are (3.05 s, 10 s) so a
+dead network costs seconds, not minutes.
+
+**ASR is skipped on a hit.** Real lyrics make transcription pointless, so a LRCLIB hit
+saves the 15–60 s Whisper pass and the first-run 150 MB model download entirely.
+
+**Synced lyrics use time anchoring.** `textset.set_timed_lines` assigns each LRC line to
+the melody phrase containing its onset (with a half-beat grace window, since stamps run
+early), then reuses the same per-phrase DP as pasted lyrics. Instrumental intros and
+interludes correctly get no words — something the paste path's positional 1:1 mapping
+can't do. The pipeline converts seconds → ticks; textset stays ignorant of beat grids.
+
+**Title precedence:** identified title > explicit `title=` parameter > filename stem.
+The analysis cache (now `-v4`) stores the identity, and a cached identified title is not
+clobbered by the filename-derived parameter on cache hits.
+
+**The committed AcoustID key.** `ACOUSTID_APP_KEY` is an *application* identifier, not a
+secret — AcoustID's intended model is that the app developer registers once and ships the
+key (MusicBrainz Picard and beets do the same in public repos). This is what lets a fresh
+clone work with zero key setup. Never commit anything from the account side of
+acoustid.org (user keys, login credentials).
+
+**Tests stay offline.** `backend/tests/conftest.py` stubs both lookup functions to "no
+match" suite-wide, so `pytest` is deterministic and network-free even on machines with
+fpcalc installed; lookup-behavior tests monkeypatch the real values back in.
