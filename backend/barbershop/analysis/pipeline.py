@@ -23,6 +23,36 @@ from barbershop.score import TimeSig
 CACHE_DIR = Path(__file__).resolve().parents[2] / "cache"
 
 
+def correct_tempo_level(
+    grid: beats_mod.BeatGrid, labels: list[tuple[int, str]]
+) -> beats_mod.BeatGrid:
+    """Beat trackers love locking onto the eighth-note level of slow songs.
+    Harmonic rhythm is the tell: this repertoire changes chords every 1-2
+    measures, so a fast grid whose chords hold for 6+ "beats" is really a
+    half-tempo song. (pyin segment durations are useless for this on old
+    78s — voicing only catches vowel cores.) Verified against the bundled
+    test recordings."""
+    if grid.tempo <= 116 or len(labels) < 16:
+        return grid
+    import numpy as np
+
+    runs, run = [], 1
+    for a, b in zip(labels, labels[1:]):
+        if a == b:
+            run += 1
+        else:
+            runs.append(run)
+            run = 1
+    runs.append(run)
+    if not runs or float(np.median(runs)) < 6:
+        return grid
+    return beats_mod.BeatGrid(
+        tempo=grid.tempo / 2,
+        beat_times=grid.beat_times[::2],
+        downbeat_phase=0,
+    )
+
+
 @dataclass
 class AnalysisResult:
     input: ArrangeInput
@@ -43,7 +73,7 @@ def _cache_key(path: str) -> str:
 def analyze(
     path: str, *, title: str | None = None, use_cache: bool = True, lyrics: bool = True
 ) -> AnalysisResult:
-    cache_file = CACHE_DIR / f"{_cache_key(path)}-v2.json"
+    cache_file = CACHE_DIR / f"{_cache_key(path)}-v3.json"
     if use_cache and cache_file.exists():
         data = json.loads(cache_file.read_text())
         inp = ArrangeInput.model_validate(data["input"])
@@ -60,17 +90,26 @@ def analyze(
     y, sr = load_audio(path)
     grid = beats_mod.track(y, sr)
 
-    import librosa
-
-    chroma_mean = librosa.feature.chroma_cqt(y=y, sr=sr).mean(axis=1)
-    detected_key = key_mod.detect(np.asarray(chroma_mean))
-
-    # chord labels first: the downbeat phase is wherever chord changes
-    # cluster, so measures land on real harmonic arrivals
+    # chord labels first: their harmonic rhythm exposes a double-time
+    # grid, and their changes vote for meter (3/4 vs 4/4) and downbeat
+    # phase, so measures land on real harmonic arrivals
     labels = chords_mod.label_beats(y, sr, grid.beat_times)
-    grid.downbeat_phase = chords_mod.best_downbeat_phase(labels)
-    melody = melody_mod.extract(y, sr, grid)
+    corrected = correct_tempo_level(grid, labels)
+    if corrected is not grid:
+        grid = corrected
+        labels = chords_mod.label_beats(y, sr, grid.beat_times)
+    meter, grid.downbeat_phase = chords_mod.best_meter_and_phase(labels)
+
+    segments = melody_mod.extract_segments(y, sr)
+    melody = melody_mod.quantize(segments, grid)
     chord_spans = chords_mod.spans_from_labels(labels, grid)
+
+    detected_key = key_mod.key_from_chords(chord_spans)
+    if detected_key is None:
+        import librosa
+
+        chroma_mean = librosa.feature.chroma_cqt(y=y, sr=sr).mean(axis=1)
+        detected_key = key_mod.detect(np.asarray(chroma_mean))
 
     if not melody:
         raise ValueError("no melody could be extracted from this audio")
@@ -93,7 +132,7 @@ def analyze(
     inp = ArrangeInput(
         title=title or Path(path).stem,
         key=detected_key,
-        time=TimeSig(beats=4, beat_type=4),  # v1 assumes 4/4 (see DESIGN.md)
+        time=TimeSig(beats=meter, beat_type=4),
         tempo=round(grid.tempo, 1),
         melody=melody,
         chords=chord_spans,
