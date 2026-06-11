@@ -73,6 +73,7 @@ export interface Arrangement {
     recording_mbid: string
     match_score: number
   } | null
+  chords?: { source: 'audio' | 'tab'; agreement: number | null; tab_url: string | null }
   composition?: {
     mode: 'major' | 'minor'
     tempo: number

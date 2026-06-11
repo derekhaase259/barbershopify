@@ -166,6 +166,11 @@ def arrange_test_song(song_id: str, options: ArrangeOptions) -> dict:
     response = _arrangement_response(result.input, options.spice)
     response["lyrics"] = {"source": result.lyrics_source, "confidence": result.lyrics_confidence}
     response["identity"] = asdict(result.identity) if result.identity else None
+    response["chords"] = {
+        "source": result.chord_source,
+        "agreement": result.chord_agreement,
+        "tab_url": result.tab_url,
+    }
     return response
 
 
@@ -200,4 +205,9 @@ def upload_and_arrange(file: UploadFile, spice: int = 3) -> dict:
     response = _arrangement_response(result.input, spice)
     response["lyrics"] = {"source": result.lyrics_source, "confidence": result.lyrics_confidence}
     response["identity"] = asdict(result.identity) if result.identity else None
+    response["chords"] = {
+        "source": result.chord_source,
+        "agreement": result.chord_agreement,
+        "tab_url": result.tab_url,
+    }
     return response

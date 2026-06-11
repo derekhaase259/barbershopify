@@ -292,6 +292,15 @@ export default function App() {
                   </dd>
                 </>
               )}
+              {arrangement.chords?.source === 'tab' && (
+                <>
+                  <dt>Chords</dt>
+                  <dd>
+                    matched tab ({Math.round((arrangement.chords.agreement ?? 0) * 100)}%
+                    agreement)
+                  </dd>
+                </>
+              )}
               <dt>Dominant 7th share</dt>
               <dd>{Math.round(arrangement.metrics.dom7_family_share * 100)}%</dd>
               <dt>Bass on root/5th</dt>

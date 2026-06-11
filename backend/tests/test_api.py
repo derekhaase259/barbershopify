@@ -130,6 +130,7 @@ def test_upload_happy_path(monkeypatch, tmp_path):
     assert body["score"]["voices"]["lead"]
     assert body["lyrics"]["source"] == "neutral"  # graceful doo/dah fallback
     assert body["identity"] is None  # conftest stubs lookup to a miss
+    assert body["chords"] == {"source": "audio", "agreement": None, "tab_url": None}
 
 
 def test_upload_reports_identity(monkeypatch, tmp_path):
