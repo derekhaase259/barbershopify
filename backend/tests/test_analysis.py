@@ -122,28 +122,26 @@ IDENT = SongIdentity(
 )
 
 
-def test_separate_vocal_extracts_melody_from_the_stem(test_wav, monkeypatch):
-    # the isolated "vocal" is a steady B-flat (pitch class 10), which the
-    # C-major mix melody never sounds — so its dominance proves the melody
-    # was read off the stem, while chords/key still come from the mix
-    dur = len(MELODY) * BEAT
-    t = np.linspace(0, dur, int(SR * dur), endpoint=False)
-    stem = (0.5 * np.sin(2 * np.pi * 466.16 * t)).astype(np.float32)
-    monkeypatch.setattr("barbershop.analysis.separate.isolate_vocal", lambda p, s: stem)
+def test_melody_comes_from_rmvpe_when_available(test_wav, monkeypatch):
+    # a steady B natural (pc 11) the C-major mix melody never sounds; in key,
+    # so snap_to_key leaves it — its dominance proves RMVPE drove the melody.
+    # ~8 s of frames at RMVPE's 10 ms hop, matching the test_wav duration.
+    n = 800
+    times = np.arange(n) * 0.01
+    freq = np.full(n, 493.88)  # B4
+    conf = np.full(n, 0.9)
+    monkeypatch.setattr("barbershop.analysis.rmvpe.rmvpe_f0", lambda y, sr: (times, freq, conf))
+    result = analyze(str(test_wav), use_cache=False)
+    pcs = [m % 12 for m in (note.midi for note in result.input.melody)]
+    assert pcs and sum(p == 11 for p in pcs) / len(pcs) > 0.5
+    assert result.input.key.fifths == 0  # key still from the mix
 
-    result = analyze(str(test_wav), use_cache=False, separate_vocal=True)
 
-    pcs = [n.midi % 12 for n in result.input.melody]
-    assert pcs and sum(p == 10 for p in pcs) / len(pcs) > 0.5
-    assert result.input.key.fifths == 0  # key still recovered from the mix
-
-
-def test_separate_vocal_falls_back_to_mix_when_unavailable(test_wav, monkeypatch):
-    monkeypatch.setattr("barbershop.analysis.separate.isolate_vocal", lambda p, s: None)
-    result = analyze(str(test_wav), use_cache=False, separate_vocal=True)
-    # the C-major mix melody survives the fallback (no B-flat takeover)
-    pcs = [n.midi % 12 for n in result.input.melody]
-    assert pcs and sum(p == 10 for p in pcs) / len(pcs) < 0.2
+def test_melody_falls_back_to_pyin_when_rmvpe_absent(test_wav, monkeypatch):
+    monkeypatch.setattr("barbershop.analysis.rmvpe.rmvpe_f0", lambda y, sr: None)
+    result = analyze(str(test_wav), use_cache=False)
+    pcs = [note.midi % 12 for note in result.input.melody]
+    assert pcs and sum(p == 11 for p in pcs) / len(pcs) < 0.2  # no B-natural takeover
 
 
 def test_lookup_hit_uses_real_lyrics_and_skips_asr(test_wav, monkeypatch):

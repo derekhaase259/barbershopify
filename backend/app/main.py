@@ -179,15 +179,10 @@ def arrange_test_song(song_id: str, options: ArrangeOptions) -> dict:
 
 
 @app.post("/api/upload")
-def upload_and_arrange(file: UploadFile, spice: int = 3, separate: bool = True, duet: bool = False) -> dict:
+def upload_and_arrange(file: UploadFile, spice: int = 3, duet: bool = False) -> dict:
     """Synchronous on purpose: FastAPI runs it in a worker thread, so the
-    minutes-long analysis (and the first-run whisper download) can't freeze
-    the event loop for every other request.
-
-    ``separate`` isolates the vocal (Demucs) before tracking the melody —
-    on by default because uploads are typically dense modern mixes where
-    pyin-on-the-mix produces a garbage lead. Set ?separate=false to skip it
-    (faster; fine for sparse, melody-dominant recordings)."""
+    minutes-long analysis (and the first-run model downloads) can't freeze
+    the event loop for every other request."""
     suffix = Path(file.filename or "upload").suffix.lower()
     if suffix not in ALLOWED_SUFFIXES:
         raise HTTPException(
@@ -208,7 +203,6 @@ def upload_and_arrange(file: UploadFile, spice: int = 3, separate: bool = True, 
             result = analyze(
                 tmp.name,
                 title=Path(file.filename or "Upload").stem,
-                separate_vocal=separate,
             )
         except ValueError as err:
             raise HTTPException(status_code=422, detail=str(err)) from err

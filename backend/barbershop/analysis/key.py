@@ -11,6 +11,19 @@ _MINOR = np.array([6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3
 # tonic pitch class -> key signature fifths (major); minor relative
 _MAJOR_FIFTHS = {0: 0, 7: 1, 2: 2, 9: 3, 4: 4, 11: 5, 6: 6, 1: -5, 8: -4, 3: -3, 10: -2, 5: -1}
 
+_MAJOR_STEPS = (0, 2, 4, 5, 7, 9, 11)
+_MINOR_STEPS = (0, 2, 3, 5, 7, 8, 10)  # natural minor
+
+
+def scale_pitch_classes(key: KeySig) -> frozenset[int]:
+    """The seven pitch classes of the key's diatonic scale."""
+    tonic = (key.fifths * 7) % 12  # major tonic from the signature
+    steps = _MAJOR_STEPS
+    if key.mode == "minor":
+        tonic = (tonic - 3) % 12  # down a minor third to the relative minor
+        steps = _MINOR_STEPS
+    return frozenset((tonic + s) % 12 for s in steps)
+
 
 def key_from_chords(spans) -> KeySig | None:
     """Vote the key from smoothed chord labels (duration-weighted diatonic

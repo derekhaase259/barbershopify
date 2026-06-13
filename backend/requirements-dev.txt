@@ -1,0 +1,5 @@
+# Dev-only: powers the ground-truth melody eval harness (tools/eval_melody.py).
+# Never imported by the runtime. Install with: pip install -r requirements-dev.txt
+-r requirements.txt
+mir_eval==0.8.2
+mirdata==1.0.0

@@ -236,3 +236,11 @@ is purely additive. It is *composed*, not extracted: recovering a duet's real se
 from audio proved infeasible (one combined vocal stem; voices that alternate or sing in
 unison). Counter-line density rides the existing swipe machinery, so it scales with spice
 for free. Full design: docs/superpowers/specs/2026-06-13-duet-countermelody-design.md.
+
+## Addendum (2026-06-13): RMVPE melody pitch
+
+The melody pitch stage now uses RMVPE on the raw mix instead of pyin, for accompaniment-robust
+extraction on dense uploads (ground-truth-measured on vocadito: pyin ~39% vs RMVPE ~91% raw-pitch
+accuracy under accompaniment). RMVPE is mixture-native, so Demucs left the melody path; pyin is
+retained as a fail-soft fallback. Note segmentation and duets remain open. Full design:
+docs/superpowers/specs/2026-06-13-rmvpe-melody-design.md.

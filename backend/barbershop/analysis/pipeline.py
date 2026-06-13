@@ -26,12 +26,6 @@ CACHE_DIR = Path(__file__).resolve().parents[2] / "cache"
 
 log = logging.getLogger(__name__)
 
-# Vocal-stem extraction profile: a sung line lives below ~E5, and Demucs
-# bleed reads as low-confidence frames worth gating out (see melody.py).
-_VOCAL_FMAX = 660.0
-_VOCAL_VOICED_PROB = 0.5
-
-
 def correct_tempo_level(
     grid: beats_mod.BeatGrid, labels: list[tuple[int, str]]
 ) -> beats_mod.BeatGrid:
@@ -90,12 +84,8 @@ def analyze(
     use_cache: bool = True,
     lyrics: bool = True,
     lookup: bool = True,
-    separate_vocal: bool = False,
 ) -> AnalysisResult:
-    # separation changes only the melody, but it changes it enough to warrant
-    # its own cache entry; the -v6 bump also retires pre-gating melodies
-    suffix = "v6-sep" if separate_vocal else "v6"
-    cache_file = CACHE_DIR / f"{_cache_key(path)}-{suffix}.json"
+    cache_file = CACHE_DIR / f"{_cache_key(path)}-v8.json"
     if use_cache and cache_file.exists():
         data = json.loads(cache_file.read_text())
         inp = ArrangeInput.model_validate(data["input"])
@@ -139,20 +129,9 @@ def analyze(
     meter, grid.downbeat_phase = chords_mod.best_meter_and_phase(labels)
     time = TimeSig(beats=meter, beat_type=4)
 
-    # melody comes from the vocal alone when asked (dense mixes); harmony,
-    # beats and key always come from the full recording
-    melody_y, fmax, voiced_prob = y, 1000.0, 0.0
-    if separate_vocal:
-        from barbershop.analysis.separate import isolate_vocal
-
-        stem = isolate_vocal(path, sr)
-        if stem is not None:
-            melody_y, fmax, voiced_prob = stem, _VOCAL_FMAX, _VOCAL_VOICED_PROB
-        else:
-            log.info("vocal separation unavailable, extracting melody from the mix")
-    segments = melody_mod.extract_segments(
-        melody_y, sr, fmax=fmax, min_voiced_prob=voiced_prob
-    )
+    # melody pitch from RMVPE on the raw mix (accompaniment-robust; pyin
+    # fallback inside); harmony, beats and key also come from the full mix
+    segments = melody_mod.extract_segments_rmvpe(y, sr)
     melody = melody_mod.quantize(segments, grid)
     chord_spans = chords_mod.spans_from_labels(labels, grid)
 
@@ -179,6 +158,11 @@ def analyze(
 
         chroma_mean = librosa.feature.chroma_cqt(y=y, sr=sr).mean(axis=1)
         detected_key = key_mod.detect(np.asarray(chroma_mean))
+
+    # pull the extracted lead onto the detected key's scale — vibrato and
+    # imperfect tracking smear a diatonic melody chromatically (no-op on the
+    # hand-entered demos, which never reach analyze())
+    melody = melody_mod.snap_to_key(melody, detected_key)
 
     if not melody:
         raise ValueError("no melody could be extracted from this audio")

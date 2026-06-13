@@ -9,7 +9,8 @@ from __future__ import annotations
 import numpy as np
 
 from barbershop.analysis.beats import BeatGrid
-from barbershop.score import Note
+from barbershop.analysis.key import scale_pitch_classes
+from barbershop.score import KeySig, Note
 
 HOP = 256
 GRID = 240  # eighth-note resolution by default (480 = quarter)
@@ -92,11 +93,10 @@ def extract_segments(
     durations to sanity-check the beat tracker's metrical level.
 
     ``min_voiced_prob`` gates frames on pyin's voicing confidence — left at
-    0 it is a no-op (the default mix path is unchanged). The vocal-isolation
-    path raises it: on a Demucs-separated stem the bleed and reverb tails
-    that survive read as low-confidence frames, and dropping them is what
-    turns the raw f0 into a singable line (validated on a dense duet mix:
-    octave-jump errors fell by more than half)."""
+    0 (the default) it is a no-op. Raising it drops low-confidence frames,
+    useful when pyin runs on noisy or bleed-laden audio. (This is now the
+    fail-soft fallback for the RMVPE pitch path; the melody otherwise comes
+    from RMVPE on the raw mix — see rmvpe.py.)"""
     import librosa
 
     f0, voiced, voiced_prob = librosa.pyin(
@@ -108,6 +108,27 @@ def extract_segments(
     times = librosa.times_like(f0, sr=sr, hop_length=HOP)
     raw = _frames_to_notes(np.asarray(f0), voiced, np.asarray(times))
     return consolidate_segments(raw)
+
+
+RMVPE_MIN_CONFIDENCE = 0.5  # frames below this are treated as unvoiced
+
+
+def extract_segments_rmvpe(
+    y: np.ndarray, sr: int, *, min_confidence: float = RMVPE_MIN_CONFIDENCE
+) -> list[tuple[float, float, float]]:
+    """Melody segments from RMVPE on the raw mix (accompaniment-robust), with
+    a pyin fallback when RMVPE is unavailable. Fragmentation is healed the
+    same way as the pyin path."""
+    from barbershop.analysis.rmvpe import rmvpe_f0
+
+    out = rmvpe_f0(y, sr)
+    if out is None:
+        return extract_segments(y, sr)  # pyin on the mix
+    times, freq, conf = out
+    voiced = np.asarray(conf) >= min_confidence
+    return consolidate_segments(
+        _frames_to_notes(np.asarray(freq), voiced, np.asarray(times))
+    )
 
 
 def quantize(segments: list[tuple[float, float, float]], grid: BeatGrid) -> list[Note]:
@@ -133,3 +154,22 @@ def quantize(segments: list[tuple[float, float, float]], grid: BeatGrid) -> list
 
 def extract(y: np.ndarray, sr: int, grid: BeatGrid, *, fmin: float = 110.0, fmax: float = 1000.0) -> list[Note]:
     return quantize(extract_segments(y, sr, fmin=fmin, fmax=fmax), grid)
+
+
+def snap_to_key(notes: list[Note], key: KeySig) -> list[Note]:
+    """Pull each extracted pitch onto the nearest in-key tone (mutates in place).
+
+    A diatonic melody sung with vibrato/portamento — and tracked imperfectly —
+    comes out chromatically smeared: out-of-key notes are almost always that
+    noise, not intent. Every chromatic pitch class sits exactly one semitone
+    from a scale tone, so the correction is gentle. (Assumes the repertoire is
+    diatonic, which the bundled material and most uploads are; genuinely
+    chromatic/blues lines would be flattened — a deliberate trade.)"""
+    pcs = scale_pitch_classes(key)
+    for n in notes:
+        if n.midi % 12 not in pcs:
+            for step in (-1, 1):
+                if (n.midi + step) % 12 in pcs:
+                    n.midi += step
+                    break
+    return notes

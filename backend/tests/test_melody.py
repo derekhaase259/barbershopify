@@ -7,6 +7,8 @@ Demucs-separated path, where bleed and reverb read as low-confidence frames.
 import numpy as np
 
 from barbershop.analysis import melody as melody_mod
+from barbershop.analysis.key import scale_pitch_classes
+from barbershop.score import KeySig, Note
 
 
 def _fake_pyin(f0, voiced, prob):
@@ -42,3 +44,65 @@ def test_default_path_ignores_confidence(monkeypatch):
     prob = np.array([0.01] * (2 * n))  # all "low" — yet nothing is dropped
     monkeypatch.setattr("librosa.pyin", _fake_pyin(f0, voiced, prob))
     assert len(melody_mod.extract_segments(np.zeros(8000), 22050)) == 2
+
+
+def test_scale_pitch_classes_db_major():
+    # D-flat major (five flats): Db Eb F Gb Ab Bb C
+    assert scale_pitch_classes(KeySig(fifths=-5, mode="major")) == {1, 3, 5, 6, 8, 10, 0}
+
+
+def test_scale_pitch_classes_a_minor():
+    assert scale_pitch_classes(KeySig(fifths=0, mode="minor")) == {9, 11, 0, 2, 4, 5, 7}
+
+
+def test_snap_to_key_pulls_out_of_key_notes_onto_the_scale():
+    key = KeySig(fifths=0, mode="major")  # C major: out-of-key = C#,D#,F#,G#,A#
+    notes = [
+        Note(onset=0, duration=240, midi=60),    # C — in key, untouched
+        Note(onset=240, duration=240, midi=61),   # C# — snap by one semitone
+        Note(onset=480, duration=240, midi=66),   # F# — snap by one semitone
+        Note(onset=720, duration=240, midi=64),   # E — in key, untouched
+    ]
+    out = melody_mod.snap_to_key(notes, key)
+    pcs = scale_pitch_classes(key)
+    assert all(n.midi % 12 in pcs for n in out)       # everything now diatonic
+    assert out[0].midi == 60 and out[3].midi == 64    # in-key notes unchanged
+    assert all(abs(o.midi - m) <= 1 for o, m in zip(out, [60, 61, 66, 64]))  # ≤1 semitone moves
+
+
+def test_extract_segments_rmvpe_uses_rmvpe_when_available(monkeypatch):
+    # a steady 220 Hz (A3) for ~1s at RMVPE's 16 kHz frame hop, all confident
+    n = 100
+    times = np.arange(n) * 0.01
+    freq = np.full(n, 220.0)
+    conf = np.full(n, 0.9)
+    monkeypatch.setattr(
+        "barbershop.analysis.rmvpe.rmvpe_f0", lambda y, sr: (times, freq, conf)
+    )
+    segs = melody_mod.extract_segments_rmvpe(np.zeros(16000, dtype="float32"), 16000)
+    assert segs and all(round(m) == 57 for m, _, _ in segs)  # A3 = MIDI 57
+
+
+def test_extract_segments_rmvpe_gates_low_confidence(monkeypatch):
+    n = 100
+    times = np.arange(n) * 0.01
+    freq = np.full(n, 220.0)
+    conf = np.full(n, 0.2)  # all below threshold -> nothing voiced
+    monkeypatch.setattr(
+        "barbershop.analysis.rmvpe.rmvpe_f0", lambda y, sr: (times, freq, conf)
+    )
+    assert melody_mod.extract_segments_rmvpe(np.zeros(16000, dtype="float32"), 16000) == []
+
+
+def test_extract_segments_rmvpe_falls_back_to_pyin(monkeypatch):
+    # rmvpe unavailable -> identical to the pyin path on the same audio
+    monkeypatch.setattr("barbershop.analysis.rmvpe.rmvpe_f0", lambda y, sr: None)
+    y = np.zeros(8000, dtype="float32")
+
+    def fake_pyin(yy, *, fmin, fmax, sr, hop_length, fill_na):
+        f = np.full(60, 220.0)
+        return f, np.ones(60, bool), np.ones(60)
+
+    monkeypatch.setattr("librosa.pyin", fake_pyin)
+    segs = melody_mod.extract_segments_rmvpe(y, 22050)
+    assert segs == melody_mod.extract_segments(y, 22050)
