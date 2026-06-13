@@ -94,7 +94,7 @@ def analyze(
 ) -> AnalysisResult:
     # separation changes only the melody, but it changes it enough to warrant
     # its own cache entry; the -v6 bump also retires pre-gating melodies
-    suffix = "v6-sep" if separate_vocal else "v6"
+    suffix = "v7-sep" if separate_vocal else "v7"
     cache_file = CACHE_DIR / f"{_cache_key(path)}-{suffix}.json"
     if use_cache and cache_file.exists():
         data = json.loads(cache_file.read_text())
@@ -179,6 +179,11 @@ def analyze(
 
         chroma_mean = librosa.feature.chroma_cqt(y=y, sr=sr).mean(axis=1)
         detected_key = key_mod.detect(np.asarray(chroma_mean))
+
+    # pull the extracted lead onto the detected key's scale — vibrato and
+    # imperfect tracking smear a diatonic melody chromatically (no-op on the
+    # hand-entered demos, which never reach analyze())
+    melody = melody_mod.snap_to_key(melody, detected_key)
 
     if not melody:
         raise ValueError("no melody could be extracted from this audio")

@@ -9,7 +9,8 @@ from __future__ import annotations
 import numpy as np
 
 from barbershop.analysis.beats import BeatGrid
-from barbershop.score import Note
+from barbershop.analysis.key import scale_pitch_classes
+from barbershop.score import KeySig, Note
 
 HOP = 256
 GRID = 240  # eighth-note resolution by default (480 = quarter)
@@ -133,3 +134,22 @@ def quantize(segments: list[tuple[float, float, float]], grid: BeatGrid) -> list
 
 def extract(y: np.ndarray, sr: int, grid: BeatGrid, *, fmin: float = 110.0, fmax: float = 1000.0) -> list[Note]:
     return quantize(extract_segments(y, sr, fmin=fmin, fmax=fmax), grid)
+
+
+def snap_to_key(notes: list[Note], key: KeySig) -> list[Note]:
+    """Pull each extracted pitch onto the nearest in-key tone (mutates in place).
+
+    A diatonic melody sung with vibrato/portamento — and tracked imperfectly —
+    comes out chromatically smeared: out-of-key notes are almost always that
+    noise, not intent. Every chromatic pitch class sits exactly one semitone
+    from a scale tone, so the correction is gentle. (Assumes the repertoire is
+    diatonic, which the bundled material and most uploads are; genuinely
+    chromatic/blues lines would be flattened — a deliberate trade.)"""
+    pcs = scale_pitch_classes(key)
+    for n in notes:
+        if n.midi % 12 not in pcs:
+            for step in (-1, 1):
+                if (n.midi + step) % 12 in pcs:
+                    n.midi += step
+                    break
+    return notes
