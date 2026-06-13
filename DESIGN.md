@@ -201,6 +201,10 @@ for an open project (the upstream RMVPE paper's own terms aren't separately rest
 redistribution point is MIT). Still unaddressed and tracked separately: **note segmentation** (our
 crude pitch-jump former caps note-F1 ~0.61 regardless of pitch source) and **duets**.
 
+Follow-on: with RMVPE on the mix, Demucs was dead weight, so `torch`/`torchaudio`/`demucs` (~1 GB)
+were dropped from `requirements.txt`. `separate.py` stays (lazy-import, fail-soft → `None` when the
+packages are absent) for the eventual duet-diarization work; `pip install demucs` reactivates it.
+
 ## Duet mode composes the baritone counter-line; it does not extract it
 
 A duet upload ("All I Ask of You") tempted a "two singers → lead + bari" split. Recovering the
