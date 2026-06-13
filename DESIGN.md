@@ -187,6 +187,20 @@ and the tracker will wander between them — separation can't resolve who the me
 isolate the voice, so it still needs melody-line selection out of a polyphonic transcript; separation
 is the more direct lever and the one we built.
 
+## Pitch moved to RMVPE-on-mix; Demucs left the melody path (2026-06-13)
+
+The section above is superseded for the *pitch* stage. `librosa.pyin` is monophonic, and measured on
+vocadito with ground truth (`backend/tools/eval_melody.py`), its raw-pitch accuracy collapses from
+~92% to ~39% the moment accompaniment is added — it tracks the loudest source, not the voice. RMVPE
+(a learned, mixture-native vocal-pitch model) holds ~97%→~91%. So melody pitch now runs **RMVPE on
+the raw mix**: it is built to find the vocal *in* a mixture, and pre-separation can propagate
+artifacts, so Demucs left the melody path (its `isolate_vocal` stays, dormant, for future duet
+diarization). `pyin` remains the fail-soft fallback when RMVPE is unavailable. The checkpoint is
+`rmvpe.onnx` from the RVC repo `lj1995/VoiceConversionWebUI` (HF), declared **MIT** — redistributable
+for an open project (the upstream RMVPE paper's own terms aren't separately restated; the
+redistribution point is MIT). Still unaddressed and tracked separately: **note segmentation** (our
+crude pitch-jump former caps note-F1 ~0.61 regardless of pitch source) and **duets**.
+
 ## Duet mode composes the baritone counter-line; it does not extract it
 
 A duet upload ("All I Ask of You") tempted a "two singers → lead + bari" split. Recovering the
