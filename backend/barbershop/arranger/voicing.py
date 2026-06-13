@@ -101,13 +101,16 @@ def candidates(slot: Slot, cfg: ArrangerConfig, *, is_final: bool, bari_target: 
                     for bari in _pitches_for(bari_pc, *RANGES["bari"]):
                         if not (bass <= bari <= tenor):
                             continue
-                        if bari_target is not None and bari != bari_target:
-                            continue  # duet: the bari is pinned to its counter-line
                         v = Voicing(tenor=tenor, bari=bari, bass=bass)
                         if v in seen:
                             continue
                         seen.add(v)
-                        out.append((v, _static_cost(slot, v, bass_iv, cfg)))
+                        cost = _static_cost(slot, v, bass_iv, cfg)
+                        if bari_target is not None and bari != bari_target:
+                            # duet: strongly prefer the counter-line, but as a cost
+                            # so the Viterbi can still resolve a 7th / avoid parallels
+                            cost += cfg.w_bari_target
+                        out.append((v, cost))
     out.sort(key=lambda item: item[1])
     return out[: cfg.max_candidates]
 
@@ -282,19 +285,17 @@ def voice_slots(
 ) -> list[Voicing]:
     """Viterbi over per-slot voicing candidates.
 
-    ``bari_targets`` (duet mode) pins the baritone to a per-slot pitch where
-    given; a counter-line is a preference, not a constraint, so a target that
-    cannot be voiced legally falls back to a free baritone for that slot."""
+    ``bari_targets`` (duet mode) biases the baritone toward a per-slot pitch
+    via a strong cost (see ``candidates``); it is a preference, not a hard
+    constraint, so the Viterbi still resolves sevenths and avoids parallels —
+    the bari simply leaves its counter-line for that slot when it must."""
     if not slots:
         return []
     if bari_targets is None:
         bari_targets = [None] * len(slots)
     columns: list[list[tuple[Voicing, float]]] = []
     for i, slot in enumerate(slots):
-        final = i == len(slots) - 1
-        col = candidates(slot, cfg, is_final=final, bari_target=bari_targets[i])
-        if not col and bari_targets[i] is not None:
-            col = candidates(slot, cfg, is_final=final)  # drop the pin, keep the chart legal
+        col = candidates(slot, cfg, is_final=(i == len(slots) - 1), bari_target=bari_targets[i])
         if not col:
             raise ValueError(
                 f"no legal voicing for slot at tick {slot.onset} "

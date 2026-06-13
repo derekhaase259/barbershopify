@@ -3,6 +3,7 @@ import pytest
 
 from barbershop.arranger.arrange import arrange
 from barbershop.arranger.config import RANGES, ArrangerConfig
+from barbershop.arranger.validate import validate
 from barbershop.demos import DEMOS
 from barbershop.score import VoiceName
 
@@ -65,3 +66,28 @@ def test_spice_changes_the_chart():
     mild = arrange(demo, ArrangerConfig(spice=1))
     wild = arrange(demo, ArrangerConfig(spice=5))
     assert mild.chords != wild.chords
+
+
+def _total_motion(notes):
+    return sum(abs(b.midi - a.midi) for a, b in zip(notes, notes[1:]))
+
+
+def test_duet_keeps_the_lead_identical():
+    for demo in DEMOS.values():
+        plain = arrange(demo, ArrangerConfig(spice=4))
+        duet = arrange(demo, ArrangerConfig(spice=4, duet=True))
+        assert duet.voices[VoiceName.lead] == plain.voices[VoiceName.lead]
+
+
+def test_duet_makes_the_baritone_more_active():
+    plain = sum(_total_motion(arrange(d, ArrangerConfig(spice=4)).voices[VoiceName.bari])
+                for d in DEMOS.values())
+    duet = sum(_total_motion(arrange(d, ArrangerConfig(spice=4, duet=True)).voices[VoiceName.bari])
+               for d in DEMOS.values())
+    assert duet > plain
+
+
+def test_duet_charts_still_validate_clean():
+    for demo in DEMOS.values():
+        score = arrange(demo, ArrangerConfig(spice=4, duet=True))
+        assert validate(score) == []
