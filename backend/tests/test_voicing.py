@@ -118,6 +118,22 @@ def test_structural_seventh_chord_stays_complete_when_it_fits():
     assert sounding == {7, 11, 2, 5}  # complete, fifth not dropped
 
 
+def test_bari_target_is_honored_when_voiceable():
+    # C major, lead on G4; pin the bari to E4 (the third) — a legal chord tone
+    slots = [make_slot(0, 67, 0, "maj")]
+    (v,) = voice_slots(slots, KEY_C, ArrangerConfig(), bari_targets=[64])
+    assert v.bari == 64
+
+
+def test_bari_target_falls_back_when_unvoiceable():
+    # a target the voicer cannot place (well below the bari range) must not
+    # crash or produce an illegal voicing — it falls back to a free bari
+    slots = [make_slot(0, 67, 0, "maj")]
+    (v,) = voice_slots(slots, KEY_C, ArrangerConfig(), bari_targets=[30])
+    assert v.bari != 30
+    assert classify(pcs_of(v, 67)) != []  # still a legal sonority
+
+
 def test_nonstructural_slot_trio_covers_essential_tones():
     # chord change lands mid-run: lead pitch (D) is an NCT over C major
     slots = [
