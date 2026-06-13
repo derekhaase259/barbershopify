@@ -96,6 +96,28 @@ def test_final_slot_bass_takes_root():
     assert voicings[-1].bass % 12 == 0
 
 
+def test_final_seventh_chord_with_lead_on_root_drops_fifth():
+    # a song ending on a dom7 with the lead on the root: the final chord
+    # must be root position (bass on root), but the lead already holds the
+    # only root of a complete voicing. Theory's answer: omit the fifth and
+    # double the root (root-root-third-seventh) — not a crash.
+    slots = [make_slot(0, 55, 7, "dom7", phrase_end=True)]  # G7, lead on G3 (root)
+    (v,) = voice_slots(slots, KEY_C, ArrangerConfig())
+    assert v.bass % 12 == 7  # bass takes the root (final chord = root position)
+    sounding = sorted({v.tenor % 12, 55 % 12, v.bari % 12, v.bass % 12})
+    assert sounding == [5, 7, 11]  # root, third, seventh present; fifth (2) dropped
+    assert classify(pcs_of(v, 55)) != []  # a legal vocabulary sonority
+
+
+def test_structural_seventh_chord_stays_complete_when_it_fits():
+    # the drop-fifth voicing is a forced fallback only: when a complete
+    # voicing is available (lead not on the root), keep all four tones
+    slots = [make_slot(0, 59, 7, "dom7")]  # G7, lead on B3 (the third)
+    (v,) = voice_slots(slots, KEY_C, ArrangerConfig())
+    sounding = {v.tenor % 12, 59 % 12, v.bari % 12, v.bass % 12}
+    assert sounding == {7, 11, 2, 5}  # complete, fifth not dropped
+
+
 def test_nonstructural_slot_trio_covers_essential_tones():
     # chord change lands mid-run: lead pitch (D) is an NCT over C major
     slots = [

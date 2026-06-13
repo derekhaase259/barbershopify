@@ -157,6 +157,13 @@ def _static_cost(slot: Slot, v: Voicing, bass_iv: int, cfg: ArrangerConfig) -> f
     if slot.structural and pcs.count(_fifth_interval(chord.quality)) > 1:
         cost += cfg.w_doubled_fifth
 
+    # --- completeness: a structural chord wants all its tones to ring ---
+    # (non-structural slots cover only the essential trio by design)
+    if slot.structural:
+        chord_ivs = {iv % 12 for iv in CHORDS[chord.quality].intervals}
+        if chord_ivs - set(pcs):  # a chord tone is missing (e.g. dropped fifth)
+            cost += cfg.w_incomplete_chord
+
     return cost
 
 
