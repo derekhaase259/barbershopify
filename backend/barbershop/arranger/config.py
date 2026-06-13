@@ -30,6 +30,7 @@ HARD = 10_000.0  # effectively-forbidden transition/static cost
 @dataclass
 class ArrangerConfig:
     spice: int = 3
+    duet: bool = False  # compose an independent baritone counter-melody
 
     # --- voicing: static weights ---
     w_ring: float = 4.0  # ring potential on sustained/cadential chords
@@ -37,6 +38,8 @@ class ArrangerConfig:
     w_range: float = 1.0  # tessitura comfort
     w_cadence_bass_root: float = 6.0  # bass should take root at phrase ends
     w_doubled_fifth: float = 1.0  # prefer doubled root on triads
+    w_incomplete_chord: float = 6.0  # a dropped fifth rings less; forced-only fallback
+    w_bari_target: float = 100.0  # duet: pull toward the counter-line, but yield to HARD rules
 
     # --- voicing: transition weights ---
     w_motion_tenor: float = 1.2

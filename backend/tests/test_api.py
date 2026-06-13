@@ -124,7 +124,8 @@ def test_upload_happy_path(monkeypatch, tmp_path):
 
     with open(_make_test_wav(tmp_path), "rb") as f:
         r = client.post(
-            "/api/upload?spice=2", files={"file": ("tiny.wav", f, "audio/wav")}
+            "/api/upload?spice=2&separate=false",  # skip demucs: this tests the mix path
+            files={"file": ("tiny.wav", f, "audio/wav")},
         )
     assert r.status_code == 200, r.text
     body = r.json()
@@ -150,10 +151,67 @@ def test_upload_reports_identity(monkeypatch, tmp_path):
 
     with open(_make_test_wav(tmp_path), "rb") as f:
         r = client.post(
-            "/api/upload?spice=2", files={"file": ("synth.wav", f, "audio/wav")}
+            "/api/upload?spice=2&separate=false",
+            files={"file": ("synth.wav", f, "audio/wav")},
         )
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["identity"]["title"] == "Synth Song"
     assert body["identity"]["year"] == 1999
     assert body["score"]["title"] == "Synth Song"
+
+
+def _upload_counting_separation(monkeypatch, tmp_path, query):
+    """Post a tiny WAV, counting calls into the (stubbed) vocal isolator."""
+    from barbershop.analysis import asr, separate
+
+    monkeypatch.setattr(asr, "transcribe", lambda path: None)
+    monkeypatch.setattr("barbershop.analysis.pipeline.CACHE_DIR", tmp_path)
+    calls: list[bool] = []
+    # stub so no real demucs runs; None -> pipeline falls back to the mix
+    monkeypatch.setattr(separate, "isolate_vocal", lambda p, s: calls.append(True) or None)
+    with open(_make_test_wav(tmp_path), "rb") as f:
+        r = client.post(query, files={"file": ("tiny.wav", f, "audio/wav")})
+    assert r.status_code == 200, r.text
+    return calls
+
+
+def test_upload_separates_vocal_by_default(monkeypatch, tmp_path):
+    calls = _upload_counting_separation(monkeypatch, tmp_path, "/api/upload?spice=2")
+    assert calls  # separation attempted without an explicit flag
+
+
+def test_upload_separate_false_skips_isolation(monkeypatch, tmp_path):
+    calls = _upload_counting_separation(
+        monkeypatch, tmp_path, "/api/upload?spice=2&separate=false"
+    )
+    assert not calls  # opted out: pyin runs straight on the mix
+
+
+def test_arrange_endpoint_accepts_duet_flag():
+    demo = client.get("/api/demos").json()[0]["id"]
+    r = client.post(f"/api/demos/{demo}/arrange", json={"spice": 4, "duet": True})
+    assert r.status_code == 200, r.text
+    assert r.json()["score"]["voices"]["bari"]
+
+
+def test_upload_threads_duet_to_arranger(monkeypatch, tmp_path):
+    from barbershop.analysis import asr, separate
+    import app.main as main
+
+    monkeypatch.setattr(asr, "transcribe", lambda path: None)
+    monkeypatch.setattr("barbershop.analysis.pipeline.CACHE_DIR", tmp_path)
+    monkeypatch.setattr(separate, "isolate_vocal", lambda p, s: None)
+    seen = {}
+    real = main.arrange  # _arrangement_response calls the module global `arrange`
+
+    def spy(inp, cfg):
+        seen["duet"] = cfg.duet
+        return real(inp, cfg)
+
+    monkeypatch.setattr(main, "arrange", spy)
+    with open(_make_test_wav(tmp_path), "rb") as f:
+        r = client.post("/api/upload?spice=2&separate=false&duet=true",
+                        files={"file": ("tiny.wav", f, "audio/wav")})
+    assert r.status_code == 200, r.text
+    assert seen["duet"] is True

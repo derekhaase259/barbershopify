@@ -48,12 +48,22 @@ def _triad(quality: str, tier: int, third: int) -> ChordDef:
 
 def _four_tone(quality: str, tier: int, intervals: tuple[int, ...], top: str) -> ChordDef:
     names = ["root", "third", "fifth", top]
+    realizations: dict[tuple[int, ...], int | None] = {tuple(sorted(intervals)): None}
+    if 7 in intervals:
+        # The perfect fifth is the expendable tone: it may be dropped and the
+        # root doubled (root-root-third-seventh). This is the standard
+        # incomplete voicing when bass and lead both need the root — e.g. a
+        # final root-position chord whose lead sits on the root. Chords with
+        # an altered fifth (dim7/halfdim7/dom7b5/aug7) keep it; their fifth is
+        # characteristic. Penalized in voicing so it is only a forced fallback.
+        root, third, _fifth, top_iv = intervals
+        realizations[tuple(sorted((root, root, third, top_iv)))] = root  # doubled root
     return ChordDef(
         quality=quality,
         tier=tier,
         intervals=intervals,
         degrees=dict(zip(intervals, names)),
-        realizations={tuple(sorted(intervals)): None},
+        realizations=realizations,
     )
 
 

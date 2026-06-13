@@ -223,3 +223,16 @@ passing diminisheds, suspensions/anticipations within a beat of a change, lead-f
 verticals, and verticals where the sacrosanct melody makes the input chord unrealizable.
 It is reported as a metric (sidebar: "Progression: NN% adherence") and becomes a named
 violation only below a 50% floor. Calibrated: spice 1–2 score 100%; spice 5 ~65–80%.
+
+## Addendum (2026-06-13): duet mode
+
+Opt-in extension (`duet`, default off). On held-lead (swipe) and phrase-end slots the
+baritone may leave its harmony-filling role to sing a composed counter-melody — a chord
+tone below the lead, moving in contrary motion, stepwise where it can. The voicing engine
+biases the bari toward this line with a strong cost, not a hard pin, so it still resolves
+sevenths and avoids parallels; the bari leaves the counter-line for a slot when a hard rule
+demands it. The lead invariant is untouched (it still carries the melody verbatim), so this
+is purely additive. It is *composed*, not extracted: recovering a duet's real second voice
+from audio proved infeasible (one combined vocal stem; voices that alternate or sing in
+unison). Counter-line density rides the existing swipe machinery, so it scales with spice
+for free. Full design: docs/superpowers/specs/2026-06-13-duet-countermelody-design.md.

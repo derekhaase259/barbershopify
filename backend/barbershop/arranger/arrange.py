@@ -116,7 +116,12 @@ def arrange(inp: ArrangeInput, cfg: ArrangerConfig) -> Score:
     slots = _add_swipes(slots, inp.time, cfg)
     chosen = harmonize(slots, key, cfg)
     slots = [replace(slot, chord=chord) for slot, chord in zip(slots, chosen)]
-    voicings = voice_slots(slots, key, cfg)
+    bari_targets = None
+    if cfg.duet:
+        from barbershop.arranger.countermelody import compose_countermelody
+
+        bari_targets = compose_countermelody(slots, cfg)
+    voicings = voice_slots(slots, key, cfg, bari_targets)
 
     voices: dict[VoiceName, list[Note]] = {VoiceName.lead: melody}
     for name in (VoiceName.tenor, VoiceName.bari, VoiceName.bass):

@@ -73,7 +73,7 @@ def _pitches_for(pc: int, lo: int, hi: int) -> list[int]:
     return [p for p in range(lo, hi + 1) if p % 12 == pc]
 
 
-def candidates(slot: Slot, cfg: ArrangerConfig, *, is_final: bool) -> list[tuple[Voicing, float]]:
+def candidates(slot: Slot, cfg: ArrangerConfig, *, is_final: bool, bari_target: int | None = None) -> list[tuple[Voicing, float]]:
     """All legal voicings for a slot with their static costs, best first."""
     chord = slot.chord
     fifth_iv = _fifth_interval(chord.quality)
@@ -105,7 +105,12 @@ def candidates(slot: Slot, cfg: ArrangerConfig, *, is_final: bool) -> list[tuple
                         if v in seen:
                             continue
                         seen.add(v)
-                        out.append((v, _static_cost(slot, v, bass_iv, cfg)))
+                        cost = _static_cost(slot, v, bass_iv, cfg)
+                        if bari_target is not None and bari != bari_target:
+                            # duet: strongly prefer the counter-line, but as a cost
+                            # so the Viterbi can still resolve a 7th / avoid parallels
+                            cost += cfg.w_bari_target
+                        out.append((v, cost))
     out.sort(key=lambda item: item[1])
     return out[: cfg.max_candidates]
 
@@ -156,6 +161,13 @@ def _static_cost(slot: Slot, v: Voicing, bass_iv: int, cfg: ArrangerConfig) -> f
                   (v.bari - chord.root_pc) % 12, (v.bass - chord.root_pc) % 12))
     if slot.structural and pcs.count(_fifth_interval(chord.quality)) > 1:
         cost += cfg.w_doubled_fifth
+
+    # --- completeness: a structural chord wants all its tones to ring ---
+    # (non-structural slots cover only the essential trio by design)
+    if slot.structural:
+        chord_ivs = {iv % 12 for iv in CHORDS[chord.quality].intervals}
+        if chord_ivs - set(pcs):  # a chord tone is missing (e.g. dropped fifth)
+            cost += cfg.w_incomplete_chord
 
     return cost
 
@@ -265,13 +277,25 @@ def transition_cost(
     return cost
 
 
-def voice_slots(slots: list[Slot], key: KeySig, cfg: ArrangerConfig) -> list[Voicing]:
-    """Viterbi over per-slot voicing candidates."""
+def voice_slots(
+    slots: list[Slot],
+    key: KeySig,
+    cfg: ArrangerConfig,
+    bari_targets: list[int | None] | None = None,
+) -> list[Voicing]:
+    """Viterbi over per-slot voicing candidates.
+
+    ``bari_targets`` (duet mode) biases the baritone toward a per-slot pitch
+    via a strong cost (see ``candidates``); it is a preference, not a hard
+    constraint, so the Viterbi still resolves sevenths and avoids parallels —
+    the bari simply leaves its counter-line for that slot when it must."""
     if not slots:
         return []
+    if bari_targets is None:
+        bari_targets = [None] * len(slots)
     columns: list[list[tuple[Voicing, float]]] = []
     for i, slot in enumerate(slots):
-        col = candidates(slot, cfg, is_final=(i == len(slots) - 1))
+        col = candidates(slot, cfg, is_final=(i == len(slots) - 1), bari_target=bari_targets[i])
         if not col:
             raise ValueError(
                 f"no legal voicing for slot at tick {slot.onset} "

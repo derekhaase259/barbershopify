@@ -18,16 +18,16 @@ const post = (body: unknown): RequestInit => ({
 export const api = {
   listDemos: () => request<DemoInfo[]>('/api/demos'),
   listTestSongs: () => request<DemoInfo[]>('/api/test-songs'),
-  arrangeDemo: (id: string, spice: number) =>
-    request<Arrangement>(`/api/demos/${id}/arrange`, post({ spice })),
-  arrangeTestSong: (id: string, spice: number) =>
-    request<Arrangement>(`/api/test-songs/${id}/arrange`, post({ spice })),
-  arrangeInput: (input: unknown, spice: number) =>
-    request<Arrangement>('/api/arrange', post({ input, spice })),
-  upload: (file: File, spice: number) => {
+  arrangeDemo: (id: string, spice: number, duet: boolean) =>
+    request<Arrangement>(`/api/demos/${id}/arrange`, post({ spice, duet })),
+  arrangeTestSong: (id: string, spice: number, duet: boolean) =>
+    request<Arrangement>(`/api/test-songs/${id}/arrange`, post({ spice, duet })),
+  arrangeInput: (input: unknown, spice: number, duet: boolean) =>
+    request<Arrangement>('/api/arrange', post({ input, spice, duet })),
+  upload: (file: File, spice: number, duet: boolean) => {
     const form = new FormData()
     form.append('file', file)
-    return request<Arrangement>(`/api/upload?spice=${spice}`, {
+    return request<Arrangement>(`/api/upload?spice=${spice}&duet=${duet}`, {
       method: 'POST',
       body: form,
     })

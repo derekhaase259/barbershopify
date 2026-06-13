@@ -32,6 +32,7 @@ interface AppState {
   testSongs: DemoInfo[]
   source: Source | null
   spice: number
+  duet: boolean
   stage: Stage
   error: string | null
   arrangement: Arrangement | null
@@ -49,6 +50,7 @@ interface AppState {
 
   loadDemos: () => Promise<void>
   setSpice: (spice: number) => void
+  setDuet: (duet: boolean) => void
   arrangeSource: (source: Source) => Promise<void>
   rearrange: () => Promise<void>
   uploadFile: (file: File) => Promise<void>
@@ -128,6 +130,7 @@ export const useStore = create<AppState>((set, get) => {
     testSongs: [],
     source: null,
     spice: 3,
+    duet: false,
     stage: 'idle',
     error: null,
     arrangement: null,
@@ -149,6 +152,7 @@ export const useStore = create<AppState>((set, get) => {
     },
 
     setSpice: (spice) => set({ spice }),
+    setDuet: (duet) => set({ duet }),
 
     arrangeSource: async (source) => {
       if (source.kind === 'upload') return
@@ -156,8 +160,8 @@ export const useStore = create<AppState>((set, get) => {
       try {
         const arrangement =
           source.kind === 'demo'
-            ? await api.arrangeDemo(source.id, get().spice)
-            : await api.arrangeTestSong(source.id, get().spice)
+            ? await api.arrangeDemo(source.id, get().spice, get().duet)
+            : await api.arrangeTestSong(source.id, get().spice, get().duet)
         finish(arrangement)
       } catch (err) {
         fail(err)
@@ -169,7 +173,7 @@ export const useStore = create<AppState>((set, get) => {
       if (!input) return
       set({ stage: 'arranging', error: null })
       try {
-        finish(await api.arrangeInput(input, get().spice))
+        finish(await api.arrangeInput(input, get().spice, get().duet))
       } catch (err) {
         fail(err)
       }
@@ -178,7 +182,7 @@ export const useStore = create<AppState>((set, get) => {
     uploadFile: async (file) => {
       set({ source: { kind: 'upload', name: file.name }, stage: 'analyzing', error: null })
       try {
-        finish(await api.upload(file, get().spice))
+        finish(await api.upload(file, get().spice, get().duet))
       } catch (err) {
         fail(err)
       }
