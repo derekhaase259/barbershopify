@@ -122,6 +122,30 @@ IDENT = SongIdentity(
 )
 
 
+def test_separate_vocal_extracts_melody_from_the_stem(test_wav, monkeypatch):
+    # the isolated "vocal" is a steady B-flat (pitch class 10), which the
+    # C-major mix melody never sounds — so its dominance proves the melody
+    # was read off the stem, while chords/key still come from the mix
+    dur = len(MELODY) * BEAT
+    t = np.linspace(0, dur, int(SR * dur), endpoint=False)
+    stem = (0.5 * np.sin(2 * np.pi * 466.16 * t)).astype(np.float32)
+    monkeypatch.setattr("barbershop.analysis.separate.isolate_vocal", lambda p, s: stem)
+
+    result = analyze(str(test_wav), use_cache=False, separate_vocal=True)
+
+    pcs = [n.midi % 12 for n in result.input.melody]
+    assert pcs and sum(p == 10 for p in pcs) / len(pcs) > 0.5
+    assert result.input.key.fifths == 0  # key still recovered from the mix
+
+
+def test_separate_vocal_falls_back_to_mix_when_unavailable(test_wav, monkeypatch):
+    monkeypatch.setattr("barbershop.analysis.separate.isolate_vocal", lambda p, s: None)
+    result = analyze(str(test_wav), use_cache=False, separate_vocal=True)
+    # the C-major mix melody survives the fallback (no B-flat takeover)
+    pcs = [n.midi % 12 for n in result.input.melody]
+    assert pcs and sum(p == 10 for p in pcs) / len(pcs) < 0.2
+
+
 def test_lookup_hit_uses_real_lyrics_and_skips_asr(test_wav, monkeypatch):
     monkeypatch.setattr("barbershop.lookup.identify.identify", lambda *a, **k: IDENT)
     monkeypatch.setattr(

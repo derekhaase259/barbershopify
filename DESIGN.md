@@ -159,13 +159,33 @@ signatures in the model and serializer), bell chords, and echo embellishments (b
 The ring metric also treats only major finals as "ringing," so minor-key composed charts report
 `final_chord_ring: no` — cosmetic, but worth knowing.
 
-## Melody extraction defaults to pyin; basic-pitch and demucs are opt-in flags
+## Melody extraction: pyin on the mix, with Demucs vocal isolation for dense material
 
 `librosa.pyin` is pure-Python/numpy, deterministic, and well-suited to the bundled test material
-(mono, melody-dominant acoustic-era recordings). `basic-pitch` drags in a TensorFlow runtime and
-`demucs` a Torch stack — both are quality boosters for dense modern mixes, so they're behind
-config flags with lazy imports rather than install-time requirements. (Spec allows either default;
-this is the pragmatic-install choice.)
+(mono, melody-dominant acoustic-era recordings) — so it stays the default on the raw mix.
+
+But pyin is *monophonic*: on a dense modern production (orchestra + multiple vocalists) it locks
+onto whichever source is loudest frame to frame, jumping between voice, bass and strings, and the
+extracted "melody" is garbage — wide-ranging, octave-churning, unsingable. The fix is to isolate
+the vocal stem first (`analysis/separate.py`, Demucs `htdemucs` on CPU) and track pitch on that.
+Melody only: harmony, beats and key still come from the full recording. The isolated stem also
+gets a tighter pitch ceiling (≤ ~E5) and a voicing-confidence gate (`min_voiced_prob`), because
+separation bleed and reverb tails survive as low-confidence frames; dropping them is most of what
+turns the raw f0 into a line. Measured on "All I Ask of You" (a full studio duet): octave-sized
+jumps fell from 37 to 7 and the median pitch rose from G♯3 into vocal register. On the sparse 78s
+separation is neutral-to-helpful, so it's safe to leave on.
+
+Defaults: **on for uploads** (`POST /api/upload?separate=true`), since uploads are typically dense
+mixes; `?separate=false` skips it. Demucs is a heavy Torch dependency, so `separate.py` lazy-imports
+everything and is **fail-soft** — any failure (package missing, download failed, decode error)
+returns `None` and the pipeline falls back to extracting from the mix, mirroring the song-lookup
+rule that an optional booster may never break analysis.
+
+Two honest limits. (1) It's a *duet*: when two voices overlap, "the lead" is genuinely ambiguous,
+and the tracker will wander between them — separation can't resolve who the melody *is*. (2)
+`basic-pitch` (a polyphonic transcriber, TensorFlow) was considered for the same problem but doesn't
+isolate the voice, so it still needs melody-line selection out of a polyphonic transcript; separation
+is the more direct lever and the one we built.
 
 ## Song lookup (2026-06-11)
 

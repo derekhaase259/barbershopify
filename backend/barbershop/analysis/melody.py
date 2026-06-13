@@ -80,18 +80,33 @@ def _fold_octave_outliers(notes: list[Note], window: int = 5, tolerance: int = 7
 
 
 def extract_segments(
-    y: np.ndarray, sr: int, *, fmin: float = 110.0, fmax: float = 1000.0
+    y: np.ndarray,
+    sr: int,
+    *,
+    fmin: float = 110.0,
+    fmax: float = 1000.0,
+    min_voiced_prob: float = 0.0,
 ) -> list[tuple[float, float, float]]:
     """Raw pyin (midi, t0, t1) segments in seconds, fragmentation healed.
     Separated from quantization so the pipeline can use real note
-    durations to sanity-check the beat tracker's metrical level."""
+    durations to sanity-check the beat tracker's metrical level.
+
+    ``min_voiced_prob`` gates frames on pyin's voicing confidence — left at
+    0 it is a no-op (the default mix path is unchanged). The vocal-isolation
+    path raises it: on a Demucs-separated stem the bleed and reverb tails
+    that survive read as low-confidence frames, and dropping them is what
+    turns the raw f0 into a singable line (validated on a dense duet mix:
+    octave-jump errors fell by more than half)."""
     import librosa
 
-    f0, voiced, _ = librosa.pyin(
+    f0, voiced, voiced_prob = librosa.pyin(
         y, fmin=fmin, fmax=fmax, sr=sr, hop_length=HOP, fill_na=0.0
     )
+    voiced = np.asarray(voiced)
+    if min_voiced_prob > 0.0:
+        voiced = voiced & (np.asarray(voiced_prob) >= min_voiced_prob)
     times = librosa.times_like(f0, sr=sr, hop_length=HOP)
-    raw = _frames_to_notes(np.asarray(f0), np.asarray(voiced), np.asarray(times))
+    raw = _frames_to_notes(np.asarray(f0), voiced, np.asarray(times))
     return consolidate_segments(raw)
 
 
