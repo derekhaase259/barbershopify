@@ -111,6 +111,27 @@ def extract_segments(
     return consolidate_segments(raw)
 
 
+RMVPE_MIN_CONFIDENCE = 0.5  # frames below this are treated as unvoiced
+
+
+def extract_segments_rmvpe(
+    y: np.ndarray, sr: int, *, min_confidence: float = RMVPE_MIN_CONFIDENCE
+) -> list[tuple[float, float, float]]:
+    """Melody segments from RMVPE on the raw mix (accompaniment-robust), with
+    a pyin fallback when RMVPE is unavailable. Fragmentation is healed the
+    same way as the pyin path."""
+    from barbershop.analysis.rmvpe import rmvpe_f0
+
+    out = rmvpe_f0(y, sr)
+    if out is None:
+        return extract_segments(y, sr)  # pyin on the mix
+    times, freq, conf = out
+    voiced = np.asarray(conf) >= min_confidence
+    return consolidate_segments(
+        _frames_to_notes(np.asarray(freq), voiced, np.asarray(times))
+    )
+
+
 def quantize(segments: list[tuple[float, float, float]], grid: BeatGrid) -> list[Note]:
     out: list[Note] = []
     for midi, t0, t1 in segments:
