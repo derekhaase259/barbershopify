@@ -191,8 +191,8 @@ function UploadSlot() {
 }
 
 export default function App() {
-  const { demos, testSongs, source, spice, stage, error, arrangement } = useStore()
-  const { loadDemos, setSpice, arrangeSource, rearrange, downloadMusicXml, downloadMidi } =
+  const { demos, testSongs, source, spice, duet, stage, error, arrangement } = useStore()
+  const { loadDemos, setSpice, setDuet, arrangeSource, rearrange, downloadMusicXml, downloadMidi } =
     useStore()
 
   useEffect(() => {
@@ -259,6 +259,16 @@ export default function App() {
               <span className="spice-label">{SPICE_LABELS[spice]}</span>
             </div>
           </div>
+          <label className="duet-toggle">
+            <input
+              type="checkbox"
+              checked={duet}
+              onChange={(e) => setDuet(e.target.checked)}
+            />
+            <span>
+              Duet <small>baritone counter-melody</small>
+            </span>
+          </label>
           <button
             className="rearrange"
             disabled={!arrangement || stage === 'arranging' || stage === 'analyzing'}
