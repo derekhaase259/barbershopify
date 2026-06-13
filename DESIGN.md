@@ -187,6 +187,21 @@ and the tracker will wander between them — separation can't resolve who the me
 isolate the voice, so it still needs melody-line selection out of a polyphonic transcript; separation
 is the more direct lever and the one we built.
 
+## Duet mode composes the baritone counter-line; it does not extract it
+
+A duet upload ("All I Ask of You") tempted a "two singers → lead + bari" split. Recovering the
+*source's* second voice was spiked and rejected: Demucs gives one combined vocal stem, the singers
+mostly alternate or sing in unison/octaves, and their close-third harmony overlaps too much for pitch
+tracking — a two-pass-pyin probe on the most-harmonized window found 0% coherent second line, and
+`basic-pitch` won't install against our Python 3.12 / numpy-2 stack. So duet mode *composes* the
+baritone line from the chord changes instead (`arranger/countermelody.py`): a chord tone below the
+lead, in contrary motion, on held-lead and phrase-end slots. The voicing engine then solves
+tenor+bass around it. The pin is a strong **soft cost** (`w_bari_target`), not a hard filter — a hard
+filter once left a dom9's 7th unresolved in Yankee Doodle, because it stripped the Viterbi's freedom
+to resolve it. As a cost, the bari follows its counter-line but yields when a hard rule (7th
+resolution, parallels) demands, so duet charts still validate clean. Counter-line density rides the
+swipe machinery, so it scales with spice for free, and the lead stays byte-for-byte identical.
+
 ## Song lookup (2026-06-11)
 
 **Why lookup at all, and why only for identity and lyrics.** Crowdsourced databases
