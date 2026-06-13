@@ -30,6 +30,7 @@ HARD = 10_000.0  # effectively-forbidden transition/static cost
 @dataclass
 class ArrangerConfig:
     spice: int = 3
+    duet: bool = False  # compose an independent baritone counter-melody
 
     # --- voicing: static weights ---
     w_ring: float = 4.0  # ring potential on sustained/cadential chords
