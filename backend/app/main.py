@@ -36,19 +36,21 @@ app.add_middleware(
 
 class ArrangeOptions(BaseModel):
     spice: int = Field(default=3, ge=1, le=5)
+    duet: bool = False
 
 
 class ArrangeRequest(BaseModel):
     input: ArrangeInput
     spice: int = Field(default=3, ge=1, le=5)
+    duet: bool = False
 
 
 class RenderRequest(BaseModel):
     score: Score
 
 
-def _arrangement_response(inp: ArrangeInput, spice: int) -> dict:
-    score = arrange(inp, ArrangerConfig(spice=spice))
+def _arrangement_response(inp: ArrangeInput, spice: int, duet: bool = False) -> dict:
+    score = arrange(inp, ArrangerConfig(spice=spice, duet=duet))
     return {
         "input": inp.model_dump(),  # cached client-side so re-arrange skips analysis
         "score": score.model_dump(),
@@ -73,12 +75,12 @@ def list_demos() -> list[dict]:
 def arrange_demo(demo_id: str, options: ArrangeOptions) -> dict:
     if demo_id not in DEMOS:
         raise HTTPException(status_code=404, detail=f"unknown demo {demo_id!r}")
-    return _arrangement_response(DEMOS[demo_id], options.spice)
+    return _arrangement_response(DEMOS[demo_id], options.spice, options.duet)
 
 
 @app.post("/api/arrange")
 def arrange_input(req: ArrangeRequest) -> dict:
-    return _arrangement_response(req.input, req.spice)
+    return _arrangement_response(req.input, req.spice, req.duet)
 
 
 @app.post("/api/render")
@@ -165,7 +167,7 @@ def arrange_test_song(song_id: str, options: ArrangeOptions) -> dict:
     from barbershop.analysis.pipeline import analyze  # heavy import, deferred
 
     result = analyze(str(path), title=_song_title(song_id))
-    response = _arrangement_response(result.input, options.spice)
+    response = _arrangement_response(result.input, options.spice, options.duet)
     response["lyrics"] = {"source": result.lyrics_source, "confidence": result.lyrics_confidence}
     response["identity"] = asdict(result.identity) if result.identity else None
     response["chords"] = {
@@ -177,7 +179,7 @@ def arrange_test_song(song_id: str, options: ArrangeOptions) -> dict:
 
 
 @app.post("/api/upload")
-def upload_and_arrange(file: UploadFile, spice: int = 3, separate: bool = True) -> dict:
+def upload_and_arrange(file: UploadFile, spice: int = 3, separate: bool = True, duet: bool = False) -> dict:
     """Synchronous on purpose: FastAPI runs it in a worker thread, so the
     minutes-long analysis (and the first-run whisper download) can't freeze
     the event loop for every other request.
@@ -213,7 +215,7 @@ def upload_and_arrange(file: UploadFile, spice: int = 3, separate: bool = True) 
     finally:
         tmp.close()
         os.unlink(tmp.name)
-    response = _arrangement_response(result.input, spice)
+    response = _arrangement_response(result.input, spice, duet)
     response["lyrics"] = {"source": result.lyrics_source, "confidence": result.lyrics_confidence}
     response["identity"] = asdict(result.identity) if result.identity else None
     response["chords"] = {

@@ -186,3 +186,32 @@ def test_upload_separate_false_skips_isolation(monkeypatch, tmp_path):
         monkeypatch, tmp_path, "/api/upload?spice=2&separate=false"
     )
     assert not calls  # opted out: pyin runs straight on the mix
+
+
+def test_arrange_endpoint_accepts_duet_flag():
+    demo = client.get("/api/demos").json()[0]["id"]
+    r = client.post(f"/api/demos/{demo}/arrange", json={"spice": 4, "duet": True})
+    assert r.status_code == 200, r.text
+    assert r.json()["score"]["voices"]["bari"]
+
+
+def test_upload_threads_duet_to_arranger(monkeypatch, tmp_path):
+    from barbershop.analysis import asr, separate
+    import app.main as main
+
+    monkeypatch.setattr(asr, "transcribe", lambda path: None)
+    monkeypatch.setattr("barbershop.analysis.pipeline.CACHE_DIR", tmp_path)
+    monkeypatch.setattr(separate, "isolate_vocal", lambda p, s: None)
+    seen = {}
+    real = main.arrange  # _arrangement_response calls the module global `arrange`
+
+    def spy(inp, cfg):
+        seen["duet"] = cfg.duet
+        return real(inp, cfg)
+
+    monkeypatch.setattr(main, "arrange", spy)
+    with open(_make_test_wav(tmp_path), "rb") as f:
+        r = client.post("/api/upload?spice=2&separate=false&duet=true",
+                        files={"file": ("tiny.wav", f, "audio/wav")})
+    assert r.status_code == 200, r.text
+    assert seen["duet"] is True
