@@ -1,17 +1,14 @@
-"""Vocal isolation via Demucs, so the melody tracker sees a (near-)solo
-voice instead of a full mix.
+"""Vocal isolation via Demucs — DORMANT. No longer on the melody path (RMVPE
+on the raw mix replaced it; see rmvpe.py). Kept for future duet diarization.
 
-``librosa.pyin`` is monophonic: on a dense modern production it locks onto
-whichever source is loudest frame to frame, jumping between voice, bass and
-strings. Separating the vocal stem first is what makes melody extraction
-usable on that material (the bundled acoustic 78s are sparse enough not to
-need it, and separation leaves them unharmed).
-
-Demucs drags in a Torch stack, so everything here is a lazy import and the
-whole module is fail-soft: any problem — package missing, model download
-failed, decode error — returns ``None`` and the pipeline falls back to
-extracting the melody from the full mix. This mirrors the song-lookup rule:
-an optional booster may never break analysis.
+NOT pinned anymore: `torch`/`torchaudio`/`demucs` were dropped from
+requirements.txt once RMVPE made them unnecessary (~1 GB lighter install).
+This module is lazy-import + fail-soft, so with those packages absent
+``isolate_vocal`` simply returns ``None``. To reactivate it, install demucs:
+``pip install demucs`` (pulls the Torch CPU stack). Everything below is a
+function-local import; any problem — package missing, model download failed,
+decode error — returns ``None``, mirroring the song-lookup rule that an
+optional booster may never break analysis.
 """
 from __future__ import annotations
 
