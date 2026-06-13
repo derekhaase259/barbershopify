@@ -52,7 +52,7 @@ def main(n_tracks: int = 15) -> None:
         s = consolidate_segments(_frames_to_notes(np.asarray(freq), np.asarray(voiced), np.asarray(times)))
         if not s:
             return np.zeros((0, 2)), np.zeros(0)
-        return np.array([[a, b] for _, a, b in s]), np.array([440 * 2 ** ((m - 69) / 12) for m, _, _ in s])
+        return np.array([[a, b] for _, a, b in s]), librosa.midi_to_hz(np.array([m for m, _, _ in s]))
 
     def score(gtf, gn, est_t, est_f, est_voiced):
         rpa = mir_eval.melody.evaluate(
@@ -75,6 +75,8 @@ def main(n_tracks: int = 15) -> None:
             r1, r2 = score(t.f0, t.notes_a1, pt, np.nan_to_num(f0), np.asarray(vo))
             agg["pyin"][0].append(r1); agg["pyin"][1].append(r2)
             out = rmvpe_f0(y16, 16000)
+            if out is None:
+                raise SystemExit("RMVPE unavailable — `pip install rmvpe-onnx` to run the bake-off")
             rt, rf, rc = out
             r1, r2 = score(t.f0, t.notes_a1, rt, rf, rc >= 0.5)
             agg["rmvpe"][0].append(r1); agg["rmvpe"][1].append(r2)

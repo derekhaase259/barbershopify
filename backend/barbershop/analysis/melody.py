@@ -93,11 +93,10 @@ def extract_segments(
     durations to sanity-check the beat tracker's metrical level.
 
     ``min_voiced_prob`` gates frames on pyin's voicing confidence — left at
-    0 it is a no-op (the default mix path is unchanged). The vocal-isolation
-    path raises it: on a Demucs-separated stem the bleed and reverb tails
-    that survive read as low-confidence frames, and dropping them is what
-    turns the raw f0 into a singable line (validated on a dense duet mix:
-    octave-jump errors fell by more than half)."""
+    0 (the default) it is a no-op. Raising it drops low-confidence frames,
+    useful when pyin runs on noisy or bleed-laden audio. (This is now the
+    fail-soft fallback for the RMVPE pitch path; the melody otherwise comes
+    from RMVPE on the raw mix — see rmvpe.py.)"""
     import librosa
 
     f0, voiced, voiced_prob = librosa.pyin(
