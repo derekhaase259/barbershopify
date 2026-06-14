@@ -277,6 +277,26 @@ def transition_cost(
     return cost
 
 
+def _last_resort_voicing(slot: Slot) -> Voicing:
+    """A guaranteed-complete voicing for a slot that no hard-legal voicing
+    fits (an extracted lead folded so low — or a filigree peak so high — that
+    the range/ordering constraints can't all be met). Chord tones clamped into
+    each voice's range, nearest the lead. Musically imperfect (the validator
+    flags it), but the arranger returns a complete chart rather than crashing."""
+    chord = slot.chord
+    tone_pcs = [(chord.root_pc + iv) % 12 for iv in CHORDS[chord.quality].intervals]
+    bass_pcs = [chord.root_pc % 12, (chord.root_pc + _fifth_interval(chord.quality)) % 12]
+
+    def nearest(allowed: list[int], lo: int, hi: int, target: int) -> int:
+        opts = [p for p in range(lo, hi + 1) if p % 12 in allowed]
+        return min(opts, key=lambda p: abs(p - target))
+
+    bass = nearest(bass_pcs, *RANGES["bass"], slot.melody_midi)
+    tenor = nearest(tone_pcs, *RANGES["tenor"], max(slot.melody_max_midi, bass))
+    bari = nearest(tone_pcs, *RANGES["bari"], (bass + tenor) // 2)
+    return Voicing(tenor=tenor, bari=bari, bass=bass)
+
+
 def voice_slots(
     slots: list[Slot],
     key: KeySig,
@@ -295,12 +315,16 @@ def voice_slots(
         bari_targets = [None] * len(slots)
     columns: list[list[tuple[Voicing, float]]] = []
     for i, slot in enumerate(slots):
-        col = candidates(slot, cfg, is_final=(i == len(slots) - 1), bari_target=bari_targets[i])
+        final = i == len(slots) - 1
+        col = candidates(slot, cfg, is_final=final, bari_target=bari_targets[i])
+        if not col and final:
+            # a final chord whose root can't sit below a very low lead: allow an
+            # inversion rather than crash (DESIGN.md: a complete chart over a crash)
+            col = candidates(slot, cfg, is_final=False, bari_target=bari_targets[i])
         if not col:
-            raise ValueError(
-                f"no legal voicing for slot at tick {slot.onset} "
-                f"(chord root={slot.chord.root_pc} {slot.chord.quality}, melody={slot.melody_midi})"
-            )
+            # truly pathological (e.g. a filigree peak above the tenor's range):
+            # a guaranteed least-bad voicing, surfaced by the validator
+            col = [(_last_resort_voicing(slot), 0.0)]
         columns.append(col)
 
     # cost[i][j] = best path cost ending at candidate j of slot i
