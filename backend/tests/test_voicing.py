@@ -143,3 +143,17 @@ def test_nonstructural_slot_trio_covers_essential_tones():
     _, v2 = voice_slots(slots, KEY_C, ArrangerConfig())
     trio_pcs = {v2.tenor % 12, v2.bari % 12, v2.bass % 12}
     assert {0, 4}.issubset(trio_pcs)  # root and third always present
+
+
+def test_voice_slots_degrades_instead_of_crashing_on_unvoiceable_slot():
+    # Eb major, final chord, lead folded to Bb2 (MIDI 46, the fifth) — too low
+    # for a root-position bass beneath it, so no hard-legal voicing exists. The
+    # voicer must produce a least-bad complete voicing, not raise (DESIGN.md:
+    # the arranger guarantees a complete chart rather than crashing).
+    slots = [make_slot(0, 46, 3, "maj", phrase_end=True)]
+    (v,) = voice_slots(slots, KEY_C, ArrangerConfig())  # must not raise
+    assert {v.tenor % 12, v.bari % 12, v.bass % 12} <= {3, 7, 10}  # Eb G Bb chord tones
+    for name in ("tenor", "bari", "bass"):
+        lo, hi = RANGES[name]
+        assert lo <= getattr(v, name) <= hi
+    assert v.bass % 12 in (3, 10)  # bass on root or fifth
